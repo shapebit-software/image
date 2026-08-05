@@ -1,25 +1,34 @@
-# ShapeBit OS Starter v0.1
+# ShapeBit OS image
 
-The first ShapeBit OS scaffold: Fedora bootc, console-only, without GNOME, Weston, or a custom desktop environment.
+This repository contains the first console-only ShapeBit OS bootc image
+scaffold. It currently targets Fedora bootc 44 and uses `multi-user.target`;
+the custom desktop is outside this stage.
 
 ## Host requirements
 
-Fedora is the preferred development host.
+Fedora is the preferred development host. The current workflow requires
+Podman, Just, QEMU/KVM, and OVMF:
 
 ```bash
 sudo dnf install podman just qemu-kvm edk2-ovmf
 ```
 
-## Build and run
+## Commands
+
+Run commands from this repository's root:
 
 ```bash
-just build
-just test
-just disk
-just run
+just build    # build the bootc container image
+just lint     # run bootc container lint
+just test     # run container smoke tests
+just disk     # create build/shapebit-os.qcow2
+just run      # boot the disk in QEMU
 ```
 
-Default credentials for the development disk image:
+`SHAPEBIT_OS_IMAGE` overrides the default image tag, and `SHAPEBIT_OS_DISK`
+overrides the default disk path.
+
+The development disk uses temporary credentials:
 
 ```text
 login: shapebit
@@ -27,18 +36,17 @@ password: shapebit
 SSH: localhost:2222
 ```
 
-This password is temporary and intended only for the development image.
+Never use these credentials in a distributable image.
 
-## v0.1 scope
+## Current scope
 
-- Fedora bootc 44 base image;
-- `multi-user.target`;
-- NetworkManager and SSH;
-- ShapeBit OS branding;
-- smoke tests;
-- QCOW2 generation;
-- directory structure for the Dioxus installer and Rust backend.
+- Fedora bootc 44 base image
+- console login through `multi-user.target`
+- NetworkManager and SSH
+- ShapeBit branding and first-boot service
+- container lint and smoke-test scripts
+- QCOW2 generation and QEMU launcher
 
-## Next task
-
-Implement `installer/protocol` as a Rust crate and add a dry-run backend. Then create an installation test on an empty disk using `bootc install to-disk --bootloader=systemd`.
+Successful end-to-end build and boot verification is tracked in the parent
+repository's
+[project status](https://github.com/shapebit-software/os/blob/main/docs/roadmap/PROJECT-STATUS.md).
