@@ -38,6 +38,12 @@ SSH: localhost:2222
 
 Never use these credentials in a distributable image.
 
+This temporary account is created by the disk-image builder and does not yet
+implement ShapeBit's accepted per-user `systemd-homed` encryption model.
+The current disk script also does not yet implement TPM2-unlocked system-volume
+encryption; its output is a development artifact, not the production security
+layout.
+
 ## Current scope
 
 - Fedora bootc 44 base image
