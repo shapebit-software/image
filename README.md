@@ -55,4 +55,4 @@ layout.
 
 Successful end-to-end build and boot verification is tracked in the parent
 repository's
-[system design](https://github.com/shapebit-software/os/blob/main/docs/architecture/system-design.md).
+[system design](https://github.com/shapebit-software/docs/wiki/System-Design).
