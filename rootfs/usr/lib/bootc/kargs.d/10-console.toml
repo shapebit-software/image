@@ -1,0 +1,2 @@
+# Kernel console on both the screen and the first serial port.
+kargs = ["console=tty0", "console=ttyS0,115200n8"]

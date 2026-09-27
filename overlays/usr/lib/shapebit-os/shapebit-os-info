@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'ShapeBit OS Developer Preview\n'
-printf '---------------------------\n'
-if command -v bootc >/dev/null 2>&1; then
-  bootc status || true
-fi
-printf '\nOS release:\n'
-cat /etc/os-release

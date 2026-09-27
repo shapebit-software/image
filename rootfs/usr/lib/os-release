@@ -1,11 +1,13 @@
 NAME="ShapeBit OS"
 PRETTY_NAME="ShapeBit OS Developer Preview"
 ID=shapebit-os
-ID_LIKE="fedora"
-VERSION_ID="0.1-dev"
+ID_LIKE=fedora
 VERSION="0.1 Developer Preview"
+VERSION_ID=0.1
 VARIANT="Console"
 VARIANT_ID=console
+IMAGE_ID=shapebit-os
+DEFAULT_HOSTNAME=shapebit
 HOME_URL="https://shapebit.software"
-SUPPORT_URL="https://shapebit.software/support"
+DOCUMENTATION_URL="https://shapebit.software/docs/"
 BUG_REPORT_URL="https://github.com/shapebit-software/os/issues"

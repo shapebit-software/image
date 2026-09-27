@@ -1,24 +1,15 @@
+# ShapeBit OS: console-only bootc image.
 ARG FEDORA_VERSION=44
 FROM quay.io/fedora/fedora-bootc:${FEDORA_VERSION}
 
-# Minimal console-only ShapeBit OS host.
-RUN dnf -y install \
-      NetworkManager \
-      openssh-server \
-      systemd-boot-unsigned \
-      util-linux \
-      cryptsetup \
-      btrfs-progs \
-      jq \
-      less \
-      vim-minimal \
-    && dnf -y clean all \
-    && systemctl enable NetworkManager.service \
-    && systemctl enable sshd.service \
-    && systemctl set-default multi-user.target
+LABEL org.opencontainers.image.title="ShapeBit OS" \
+      org.opencontainers.image.url="https://shapebit.software" \
+      org.opencontainers.image.source="https://github.com/shapebit-software/image"
 
-COPY image/files/ /
+# Files under rootfs/ are copied verbatim; their paths mirror the target system.
+COPY rootfs/ /
 
-RUN chmod 0755 /usr/lib/shapebit-os/shapebit-os-info \
-    && systemctl enable shapebit-os-firstboot.service \
-    && bootc container lint
+RUN systemctl set-default multi-user.target
+
+# Must stay last: validates the final image.
+RUN bootc container lint

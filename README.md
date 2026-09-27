@@ -1,58 +1,53 @@
 # ShapeBit OS image
 
-This repository contains the first console-only ShapeBit OS bootc image
-scaffold. It currently targets Fedora bootc 44 and uses `multi-user.target`;
-the custom desktop is outside this stage.
+The bootable ShapeBit OS image: a [bootc](https://bootc-dev.github.io/bootc/)
+container built on Fedora bootc 44. It is currently console-only.
 
-## Host requirements
+## Requirements
 
-Fedora is the preferred development host. The current workflow requires
-Podman, Just, QEMU/KVM, and OVMF:
-
-```bash
-sudo dnf install podman just qemu-kvm edk2-ovmf
-```
-
-## Commands
-
-Run commands from this repository's root:
+A Linux x86-64 host with KVM, a container engine, QEMU, UEFI firmware, and
+OpenSSH:
 
 ```bash
-just build    # build the bootc container image
-just lint     # run bootc container lint
-just test     # run container smoke tests
-just disk     # create build/shapebit-os.qcow2
-just run      # boot the disk in QEMU
+sudo dnf install podman make qemu-kvm edk2-ovmf openssh-clients      # Fedora
+sudo apt install podman make qemu-system-x86 ovmf openssh-client     # Debian/Ubuntu
 ```
 
-`SHAPEBIT_OS_IMAGE` overrides the default image tag, and `SHAPEBIT_OS_DISK`
-overrides the default disk path.
+The default engine is `sudo podman`, because installing to a disk needs root.
+To use Docker instead, add `ENGINE=docker` to any command.
 
-The development disk uses temporary credentials:
+## Usage
 
-```text
-login: shapebit
-password: shapebit
-SSH: localhost:2222
+```bash
+make test    # build, check, install to a disk, boot it, and check the running system
+make vm      # boot build/disk.raw with the serial console on this terminal
+make ssh     # root shell in the running VM (from another terminal)
+make help    # all targets
 ```
 
-Never use these credentials in a distributable image.
+All settings are variables at the top of the [Makefile](Makefile), such as
+`IMAGE`, `DISK_SIZE`, and `SSH_PORT`.
 
-This temporary account is created by the disk-image builder and does not yet
-implement ShapeBit's accepted per-user `systemd-homed` encryption model.
-The current disk script also does not yet implement TPM2-unlocked system-volume
-encryption; its output is a development artifact, not the production security
-layout.
+## Development access
 
-## Current scope
+The image and disk contain no credentials. `make vm` and `make test` generate a
+key in `build/ssh/` and pass its public key to the VM as the systemd credential
+`ssh.authorized_keys.root`. There is no password login.
 
-- Fedora bootc 44 base image
-- console login through `multi-user.target`
-- NetworkManager and SSH
-- ShapeBit branding and first-boot service
-- container lint and smoke-test scripts
-- QCOW2 generation and QEMU launcher
+## Layout
 
-Successful end-to-end build and boot verification is tracked in the parent
-repository's
-[system design](https://github.com/shapebit-software/docs/wiki/system-design).
+| Path            | Purpose                                                     |
+| --------------- | ----------------------------------------------------------- |
+| `Containerfile` | The image definition.                                       |
+| `rootfs/`       | Files copied verbatim into the image; paths mirror `/`.     |
+| `scripts/`      | Host helpers: disk install, QEMU launcher, SSH.             |
+| `tests/`        | `image.sh` runs in the container, `system.sh` in the VM.    |
+| `build/`        | Generated outputs (ignored by Git).                         |
+
+## Not yet implemented
+
+The development disk uses the default layout from `bootc install`: GRUB, an
+unencrypted Btrfs root, and no TPM. It does not yet match the
+[Base System](https://shapebit.software/docs/) architecture, which requires
+LUKS2, `@base`/`@machine`/`@people`/`@recovery` subvolumes, systemd-boot with
+signed UKIs, and `systemd-homed`.
