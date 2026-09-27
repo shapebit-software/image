@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Install IMAGE to the raw disk DISK with the bootc shipped inside the image.
+# Install IMAGE to the raw disk DISK, encrypted with the passphrase in LUKS_KEY.
+# The storage layout and install run inside the image (scripts/install.sh).
 set -euo pipefail
-: "${ENGINE:?}" "${IMAGE:?}" "${BUILD:?}" "${DISK:?}" "${DISK_SIZE:?}"
+: "${ENGINE:?}" "${IMAGE:?}" "${BUILD:?}" "${DISK:?}" "${DISK_SIZE:?}" "${LUKS_KEY:?}"
 
 archive=$BUILD/image.tar
 trap 'rm -f "$archive"' EXIT
@@ -23,12 +24,9 @@ $ENGINE run --rm --privileged \
   -v /dev:/dev \
   -v "$(realpath "$archive"):/image.tar:ro" \
   -v "$(realpath "$DISK"):/disk.raw" \
+  -v "$(realpath "$LUKS_KEY"):/luks.key:ro" \
+  -v "$(realpath scripts/install.sh):/install.sh:ro" \
+  -e DISK=/disk.raw -e LUKS_KEY=/luks.key \
+  -e SOURCE_IMGREF=oci-archive:/image.tar -e IMAGE="$IMAGE" \
   "$IMAGE" \
-  bootc install to-disk \
-    --via-loopback \
-    --generic-image \
-    --filesystem btrfs \
-    --source-imgref oci-archive:/image.tar \
-    --target-imgref "$IMAGE" \
-    --skip-fetch-check \
-    /disk.raw
+  /install.sh

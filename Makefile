@@ -10,8 +10,9 @@ DISK           ?= $(BUILD)/disk.raw
 DISK_SIZE      ?= 20G
 SSH_PORT       ?= 2222
 SSH_KEY        ?= $(BUILD)/ssh/id_ed25519
+LUKS_KEY       ?= $(BUILD)/luks/passphrase
 
-export ENGINE IMAGE BUILD DISK DISK_SIZE SSH_PORT SSH_KEY
+export ENGINE IMAGE BUILD DISK DISK_SIZE SSH_PORT SSH_KEY LUKS_KEY
 
 .DEFAULT_GOAL := help
 .PHONY: help image check disk vm ssh test clean
@@ -25,16 +26,16 @@ image: ## Build the container image
 check: image ## Run checks inside the container image
 	$(ENGINE) run --rm -i --network none $(IMAGE) bash -s < tests/image.sh
 
-disk: image ## Install the image to a bootable raw disk
+disk: image $(LUKS_KEY) ## Install the image to an encrypted bootable raw disk
 	scripts/disk.sh
 
-vm: $(SSH_KEY) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
+vm: $(SSH_KEY) $(LUKS_KEY) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
 	scripts/vm.sh
 
 ssh: $(SSH_KEY) ## Open a root shell in the running VM
 	scripts/ssh.sh
 
-test: check disk $(SSH_KEY) ## Boot the disk and run checks inside the system
+test: check disk $(SSH_KEY) $(LUKS_KEY) ## Boot the disk and run checks inside the system
 	tests/boot.sh
 
 clean: ## Remove build outputs
@@ -43,3 +44,8 @@ clean: ## Remove build outputs
 $(SSH_KEY):
 	mkdir -p $(@D)
 	ssh-keygen -q -t ed25519 -N '' -C shapebit-dev -f $@
+
+# Development-only disk passphrase, without a trailing newline.
+$(LUKS_KEY):
+	mkdir -p $(@D)
+	head -c 32 /dev/urandom | base64 | tr -d '\n' > $@

@@ -10,7 +10,7 @@ check() {
 }
 
 . /etc/os-release
-check "os-release identifies ShapeBit OS" test "$ID" = shapebit-os
+check "os-release identifies ShapeBit OS" test "$ID" = shapebit
 check "default target is multi-user" test "$(systemctl get-default)" = multi-user.target
 check "sshd is enabled" systemctl -q is-enabled sshd.service
 check "NetworkManager is enabled" systemctl -q is-enabled NetworkManager.service

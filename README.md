@@ -34,20 +34,42 @@ The image and disk contain no credentials. `make vm` and `make test` generate a
 key in `build/ssh/` and pass its public key to the VM as the systemd credential
 `ssh.authorized_keys.root`. There is no password login.
 
+The disk is encrypted with a development passphrase generated in
+`build/luks/passphrase`. The VM receives it as the systemd credential
+`cryptsetup.passphrase`, which unlocks the disk in the initrd without a prompt.
+
 ## Layout
 
 | Path            | Purpose                                                     |
 | --------------- | ----------------------------------------------------------- |
 | `Containerfile` | The image definition.                                       |
 | `rootfs/`       | Files copied verbatim into the image; paths mirror `/`.     |
-| `scripts/`      | Host helpers: disk install, QEMU launcher, SSH.             |
+| `scripts/`      | Disk layout and install, QEMU launcher, SSH.                |
 | `tests/`        | `image.sh` runs in the container, `system.sh` in the VM.    |
 | `build/`        | Generated outputs (ignored by Git).                         |
 
+## Disk layout
+
+`scripts/install.sh` lays out the disk following the
+[Base System](https://shapebit.software/docs/) architecture:
+
+| Partition  | Content                                                                |
+| ---------- | ---------------------------------------------------------------------- |
+| `bios`     | BIOS boot for GRUB (temporary).                                        |
+| `esp`      | EFI System Partition.                                                  |
+| `boot`     | ext4 `/boot` for GRUB, which cannot read LUKS2 (temporary).            |
+| `shapebit` | LUKS2 volume with one Btrfs filesystem, split into subvolumes.         |
+
+| Subvolume   | Mounted at  | Content                                               |
+| ----------- | ----------- | ----------------------------------------------------- |
+| `@base`     | `/sysroot`  | The bootc deployments, including each one's `/etc`.   |
+| `@machine`  | `/var`      | This device's state.                                  |
+| `@people`   | `/var/home` | Homes (`/home` links to `/var/home`).                 |
+| `@recovery` | not mounted | Reserved for recovery data.                           |
+
 ## Not yet implemented
 
-The development disk uses the default layout from `bootc install`: GRUB, an
-unencrypted Btrfs root, and no TPM. It does not yet match the
-[Base System](https://shapebit.software/docs/) architecture, which requires
-LUKS2, `@base`/`@machine`/`@people`/`@recovery` subvolumes, systemd-boot with
-signed UKIs, and `systemd-homed`.
+- systemd-boot with signed UKIs and Secure Boot; this removes both temporary
+  partitions.
+- TPM2 unlock (PCR 7 and signed PCR 11) with a recovery key, tested with swtpm.
+- `systemd-homed` homes in `@people`.

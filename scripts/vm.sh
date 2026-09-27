@@ -3,7 +3,7 @@
 # Usage: vm.sh              serial console on this terminal (Ctrl-A X quits)
 #        vm.sh --background  detached; console in BUILD/serial.log, PID in BUILD/vm.pid
 set -euo pipefail
-: "${BUILD:?}" "${DISK:?}" "${SSH_PORT:?}" "${SSH_KEY:?}"
+: "${BUILD:?}" "${DISK:?}" "${SSH_PORT:?}" "${SSH_KEY:?}" "${LUKS_KEY:?}"
 
 [[ -f $DISK ]] || { echo "error: $DISK not found; run 'make disk'" >&2; exit 1; }
 
@@ -26,8 +26,11 @@ fi
 vars=$BUILD/efivars.fd
 [[ $vars -nt $DISK ]] || cp "$OVMF_VARS" "$vars"
 
-# The SSH key reaches the guest as a systemd credential; nothing is baked into the disk.
+# The SSH key and the disk passphrase reach the guest as systemd credentials;
+# nothing is baked into the disk. systemd-cryptsetup in the initrd reads
+# cryptsetup.passphrase to unlock the LUKS2 volume.
 key=$(base64 -w0 < "$SSH_KEY.pub")
+passphrase=$(base64 -w0 < "$LUKS_KEY")
 
 args=(
   -machine q35,accel=kvm -cpu host -m 4096 -smp 4
@@ -36,6 +39,7 @@ args=(
   -drive "if=virtio,format=raw,discard=unmap,file=$DISK"
   -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22"
   -smbios "type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$key"
+  -smbios "type=11,value=io.systemd.credential.binary:cryptsetup.passphrase=$passphrase"
 )
 
 if [[ ${1:-} == --background ]]; then
