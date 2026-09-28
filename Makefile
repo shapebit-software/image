@@ -7,6 +7,7 @@ IMAGE          ?= localhost/shapebit-os:dev
 FEDORA_VERSION ?= 44
 BUILD          ?= build
 DISK           ?= $(BUILD)/disk.raw
+IMAGE_SIZE     ?= 12G
 DISK_SIZE      ?= 20G
 SSH_PORT       ?= 2222
 SSH_KEY        ?= $(BUILD)/ssh/id_ed25519
@@ -14,7 +15,7 @@ RECOVERY_KEY   ?= $(BUILD)/recovery-key
 KEYS_DIR       ?= $(BUILD)/keys
 BOOT_TIMEOUT   ?= 300
 
-export ENGINE IMAGE FEDORA_VERSION BUILD DISK DISK_SIZE SSH_PORT SSH_KEY RECOVERY_KEY KEYS_DIR BOOT_TIMEOUT
+export ENGINE IMAGE FEDORA_VERSION BUILD DISK IMAGE_SIZE DISK_SIZE SSH_PORT SSH_KEY RECOVERY_KEY KEYS_DIR BOOT_TIMEOUT
 
 .DEFAULT_GOAL := help
 .PHONY: help image check disk vm ssh test clean
@@ -31,9 +32,8 @@ image: $(KEYS) ## Build the container image with its signed UKI
 check: image ## Run checks inside the container image
 	$(ENGINE) run --rm -i --network none $(IMAGE) bash -s < tests/image.sh
 
-disk: image $(SSH_KEY) ## Install the image to an encrypted disk and enroll the VM's TPM2
+disk: image ## Install the image to an encrypted raw disk
 	scripts/disk.sh
-	scripts/enroll.sh
 
 vm: $(SSH_KEY) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
 	scripts/vm.sh
@@ -41,7 +41,7 @@ vm: $(SSH_KEY) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
 ssh: $(SSH_KEY) ## Open a root shell in the running VM
 	scripts/ssh.sh
 
-test: check disk ## Boot the disk and run checks inside the system
+test: check disk $(SSH_KEY) ## Boot the disk and run checks inside the system
 	tests/boot.sh
 
 clean: ## Remove build outputs

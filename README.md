@@ -21,7 +21,7 @@ To use Docker instead, add `ENGINE=docker` to any command.
 ## Usage
 
 ```bash
-make test    # build, check, install, enroll the TPM, boot, and check the running system
+make test    # build, check, install, boot twice, and check the running system
 make vm      # boot build/disk.raw with the serial console on this terminal
 make ssh     # root shell in the running VM (from another terminal)
 make clean   # remove build/, including the disk, keys, and recovery key
@@ -29,7 +29,7 @@ make help    # all targets
 ```
 
 Settings are variables at the top of the [Makefile](Makefile), such as
-`IMAGE`, `DISK_SIZE`, and `SSH_PORT`.
+`IMAGE`, `IMAGE_SIZE`, `DISK_SIZE`, and `SSH_PORT`.
 
 ## How it works
 
@@ -50,13 +50,11 @@ The sealed image is saved as `build/image.tar`.
 
 ### Disk
 
-`make disk` installs in two steps:
-
-1. [scripts/install.sh](scripts/install.sh) lays out the disk inside the image
-   container and installs with bootc's composefs backend. The volume gets a
-   recovery key, saved to `build/recovery-key`.
-2. [scripts/enroll.sh](scripts/enroll.sh) boots the VM once, unlocked by the
-   recovery key, and enrolls the VM's TPM.
+`make disk` ([scripts/disk.sh](scripts/disk.sh)) installs the image to a raw
+disk image of `IMAGE_SIZE`, then enlarges it to `DISK_SIZE`, as when the image
+is written to a larger disk. [scripts/install.sh](scripts/install.sh) lays out
+the disk inside the image container and installs with bootc's composefs
+backend.
 
 | Partition  | Content                                                        |
 | ---------- | -------------------------------------------------------------- |
@@ -80,13 +78,28 @@ image's Secure Boot keys and reboots. From then on the firmware runs only the
 signed systemd-boot, which runs only the signed UKI, which mounts only the
 system whose digest it pins. Development builds use no Microsoft-signed shim.
 
-The LUKS2 volume has two key slots:
+The LUKS2 volume holds these key slots:
 
-- **TPM2**, bound to PCR 7 (the Secure Boot policy) and to PCR 11 values
-  signed by the PCR policy key. A new UKI signed with the same key unlocks
-  without re-enrollment.
-- **Recovery key**. If the TPM refuses, the console asks for a passphrase, and
-  the recovery key works there.
+| Key slot     | Added by                                    | Removed by     |
+| ------------ | ------------------------------------------- | -------------- |
+| Recovery key | `install.sh`, saved to `build/recovery-key` | never          |
+| Clear key    | `install.sh`: an empty passphrase           | the first boot |
+| TPM2         | the first boot                              | never          |
+
+On the first boot the clear key unlocks the volume without a prompt, and
+`tpm2-enroll.service`, which runs only on the first boot (systemd's
+`ConditionFirstBoot`), replaces it with a TPM2 slot bound to PCR 7 (the
+Secure Boot policy) and to PCR 11 values signed by the PCR policy key. A new
+UKI signed with the same key unlocks without re-enrollment. Until that first
+boot, anyone with the disk can unlock it. If the TPM ever refuses, the console
+asks for a passphrase, and the recovery key works there.
+
+`install.sh` marks the machine ID `uninitialized`, so the first boot generates
+it and saves it once that boot completes. An interrupted first boot is
+retried on the next boot.
+
+The first boot also grows the root partition into free space (systemd-repart);
+the next boot unlocks the larger LUKS2 volume and grows Btrfs (systemd-growfs).
 
 The VM's EFI variables (`build/efivars.fd`) and TPM state (`build/tpm/`)
 belong to the disk; `make disk` resets them.
@@ -106,14 +119,31 @@ run `homectl create` in `make ssh` to add one.
 
 ## Layout
 
-| Path                 | Purpose                                                     |
-| -------------------- | ----------------------------------------------------------- |
-| `Containerfile`      | The unsealed system.                                        |
-| `Containerfile.seal` | Adds the signed UKI to the built system.                    |
-| `rootfs/`            | Files copied verbatim into the image; paths mirror `/`.     |
-| `scripts/`           | Keys, image build, disk install, TPM enrollment, QEMU, SSH. |
-| `tests/`             | Checks for the image (`image.sh`) and the VM (`boot.sh`).   |
-| `build/`             | Generated outputs (ignored by Git).                         |
+| Path                 | Purpose                                                   |
+| -------------------- | --------------------------------------------------------- |
+| `Containerfile`      | The unsealed system.                                      |
+| `Containerfile.seal` | Adds the signed UKI to the built system.                  |
+| `rootfs/`            | Files copied verbatim into the image; paths mirror `/`.   |
+| `scripts/`           | Keys, image build, disk install, QEMU, SSH.               |
+| `tests/`             | Checks for the image (`image.sh`) and the VM (`boot.sh`). |
+| `build/`             | Generated outputs (ignored by Git).                       |
+
+## Installer
+
+The installer will do the same on the target machine, where it knows the disk
+and can use the TPM: it sizes the partition to the disk and enrolls the TPM
+during installation, so the first-boot steps find nothing to do. What it
+configures maps to built-in mechanisms that the development tooling can pass as
+systemd credentials:
+
+| Setting                               | Mechanism                                             |
+| ------------------------------------- | ----------------------------------------------------- |
+| Target disk                           | The disk layout in `install.sh`                       |
+| TPM2 use, recovery key                | `systemd-cryptenroll`                                 |
+| Locale, keyboard, time zone, hostname | `systemd-firstboot` or `firstboot.*` credentials      |
+| First owner                           | `homectl create` or a `home.create.<user>` credential |
+| Wi-Fi profile                         | A NetworkManager keyfile                              |
+| Update source                         | `bootc install --target-imgref`                       |
 
 ## Not yet implemented
 

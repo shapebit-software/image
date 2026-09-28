@@ -1,0 +1,17 @@
+# Nothing built in enrolls a TPM2 in an existing volume at boot, so this unit
+# runs a short script; see /usr/libexec/tpm2-enroll. It runs on the
+# first boot only. The machine ID is saved when first-boot-complete.target is
+# reached, so if that boot is interrupted, the next boot runs this again.
+[Unit]
+Description=Replace the first-boot clear key with a TPM2 key slot
+ConditionFirstBoot=yes
+After=tpm2.target cryptsetup.target
+Before=first-boot-complete.target
+Wants=first-boot-complete.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/tpm2-enroll
+
+[Install]
+WantedBy=multi-user.target

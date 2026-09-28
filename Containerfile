@@ -18,7 +18,7 @@ COPY rootfs/ /
 RUN dnf -y install systemd-boot-unsigned && dnf clean all && \
     rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
 
-RUN systemctl set-default multi-user.target
+RUN systemctl set-default multi-user.target && systemctl preset tpm2-enroll.service
 
 # Logins for systemd-homed users need pam_systemd_home. authselect's checksum
 # in /var is dropped, as in the base image; the configuration lives in /etc.

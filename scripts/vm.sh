@@ -5,8 +5,6 @@
 #        vm.sh --background  detached; returns once SSH is up. Console in
 #                            BUILD/serial.log, PID in BUILD/vm.pid.
 #        vm.sh --stop        power off the detached VM, so its writes reach the disk
-# With UNLOCK_KEY set to a key file, the disk is unlocked with it instead of
-# the TPM (enroll.sh uses this before the TPM is enrolled).
 set -euo pipefail
 : "${BUILD:?}" "${DISK:?}" "${SSH_PORT:?}" "${SSH_KEY:?}" "${BOOT_TIMEOUT:?}"
 
@@ -67,10 +65,6 @@ args=(
   -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22"
   -smbios "type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 <"$SSH_KEY.pub")"
 )
-# systemd-cryptsetup in the initrd reads cryptsetup.passphrase.
-if [[ -n ${UNLOCK_KEY:-} ]]; then
-  args+=(-smbios "type=11,value=io.systemd.credential.binary:cryptsetup.passphrase=$(base64 -w0 <"$UNLOCK_KEY")")
-fi
 
 if [[ ${1:-} != --background ]]; then
   exec qemu-system-x86_64 "${args[@]}" -nographic

@@ -8,10 +8,10 @@ set -euo pipefail
 # No udev in the container; device-mapper must not wait for it.
 export DM_DISABLE_UDEV=1
 
-mapper=shapebit-install
-install_key=/run/shapebit/install.key
-top=/run/shapebit/top
-target=/run/shapebit/target
+mapper=install-root
+install_key=/run/install/key
+top=/run/install/top
+target=/run/install/target
 
 loop=$(losetup --find --show --partscan "$DISK")
 cleanup() {
@@ -32,14 +32,18 @@ esp=${loop}p1 luks=${loop}p2
 
 mkfs.vfat -F 32 -n ESP "$esp" >/dev/null
 
-# A random installation key opens the volume once; it is then replaced by a
-# recovery key, saved to RECOVERY_KEY for the owner. enroll.sh adds the TPM2
-# key slot on the machine itself.
+# A random installation key opens the volume during the install and is then
+# replaced by two slots: a recovery key, saved to RECOVERY_KEY for the owner,
+# and a clear key (an empty passphrase, so it needs no costly key derivation)
+# that unlocks the first boot. There, tpm2-enroll.service replaces the
+# clear key with the machine's TPM2.
 mkdir -p "${install_key%/*}"
 (umask 077 && head -c 64 /dev/urandom >"$install_key")
 cryptsetup luksFormat --batch-mode --type luks2 --label shapebit --key-file "$install_key" "$luks"
 cryptsetup open --key-file "$install_key" "$luks" "$mapper"
-systemd-cryptenroll --unlock-key-file="$install_key" --recovery-key --wipe-slot=password "$luks" |
+printf '\n' | cryptsetup luksAddKey --batch-mode --force-password \
+  --pbkdf pbkdf2 --pbkdf-force-iterations 1000 --key-file "$install_key" "$luks"
+systemd-cryptenroll --unlock-key-file="$install_key" --recovery-key --wipe-slot=0 "$luks" |
   tr -d '\n' >"$RECOVERY_KEY"
 chown "$OWNER" "$RECOVERY_KEY"
 chmod 600 "$RECOVERY_KEY"
@@ -73,11 +77,16 @@ stateroot=$target/state/os/default
 cp -a "$stateroot/var/." "$top/@machine/"
 find "$stateroot/var" -mindepth 1 -delete
 btrfs_uuid=$(blkid -s UUID -o value "/dev/mapper/$mapper")
-deployments=("$target"/state/deploy/*)
-cat >>"${deployments[0]}/etc/fstab" <<EOF
+etc=$(echo "$target"/state/deploy/*/etc)
+cat >>"$etc/fstab" <<EOF
 UUID=$btrfs_uuid /var      btrfs subvol=@machine 0 0
 UUID=$btrfs_uuid /var/home btrfs subvol=@people  0 0
 EOF
+
+# The image's empty machine-id makes systemd use a new, temporary ID at every
+# boot. "uninitialized" marks the first boot instead: systemd generates the ID
+# and saves it once that boot completes (ConditionFirstBoot, machine-id(5)).
+echo uninitialized >"$etc/machine-id"
 
 for mountpoint in "$target/boot" "$target"; do
   fstrim --quiet-unsupported "$mountpoint"

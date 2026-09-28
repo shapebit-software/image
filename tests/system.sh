@@ -35,8 +35,34 @@ check "TPM2 key slot is bound to PCR 7 and signed PCR 11" tpm2_policy
 has_recovery_key() { luks_dump | jq -e '[.tokens[] | select(.type == "systemd-recovery")] | length == 1' >/dev/null; }
 check "recovery key is enrolled" has_recovery_key
 only_tpm2_and_recovery() { luks_dump | jq -e '.keyslots | length == 2' >/dev/null; }
-check "no other key slots" only_tpm2_and_recovery
-check "unlocked without a passphrase" test ! -e /run/credentials/@system/cryptsetup.passphrase
+check "clear key is gone; no other key slots" only_tpm2_and_recovery
+unlocked_by_tpm2() {
+  local log
+  log=$(journalctl -b -o cat -u systemd-cryptsetup@root.service)
+  grep -q 'TPM2 token unlocks volume' <<<"$log" && ! grep -q 'falling back' <<<"$log"
+}
+check "unlocked by the TPM" unlocked_by_tpm2
+machine_id_saved() { test -s /etc/machine-id && ! grep -q uninitialized /etc/machine-id && ! findmnt -q /etc/machine-id; }
+check "machine ID is saved, not temporary" machine_id_saved
+check "TPM2 enrollment runs only on the first boot" test "$(systemctl show -P ConditionResult tpm2-enroll.service)" = no
+disk=/dev/$(lsblk -ndo PKNAME /dev/disk/by-partlabel/shapebit)
+root_partition_fills_disk() {
+  local free
+  free=$(sfdisk --list-free "$disk" | sed -n 's/^Unpartitioned space .*, \([0-9]*\) bytes,.*/\1/p')
+  test "$free" -lt $((2 * 1024 * 1024))
+}
+check "root partition fills the disk" root_partition_fills_disk
+luks_fills_partition() {
+  local offset size
+  offset=$(cryptsetup status root | awk '$1 == "offset:" { print $2 }')
+  size=$(cryptsetup status root | awk '$1 == "size:" { print $2 }')
+  test $((offset + size)) -eq "$(blockdev --getsz /dev/disk/by-partlabel/shapebit)"
+}
+check "LUKS2 volume fills the root partition" luks_fills_partition
+btrfs_fills_volume() {
+  test "$(btrfs filesystem show --raw /sysroot | awk '$1 == "devid" { print $4 }')" -eq "$(blockdev --getsize64 /dev/mapper/root)"
+}
+check "Btrfs fills the LUKS2 volume" btrfs_fills_volume
 check "@base is mounted at /sysroot" test "$(findmnt -no FSROOT /sysroot)" = /@base
 check "@machine is mounted at /var" test "$(findmnt -no FSROOT /var)" = /@machine
 check "@people is mounted at /var/home" test "$(findmnt -no FSROOT /var/home)" = /@people

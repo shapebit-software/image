@@ -1,0 +1,23 @@
+#!/usr/bin/bash
+# Replace the root volume's first-boot clear key (an empty passphrase, which
+# systemd-cryptsetup tries after the TPM) with a TPM2 key slot bound to PCR 7
+# and signed PCR 11. Run by tpm2-enroll.service on the first boot;
+# does nothing if there is no clear key, as after an installer enrolled the TPM.
+# The clear key is wiped even if the TPM cannot be enrolled, so the recovery
+# key then unlocks the volume.
+set -euo pipefail
+
+volume=$(cryptsetup status root | awk '$1 == "device:" { print $2 }')
+printf '\n' | cryptsetup open --test-passphrase "$volume" 2>/dev/null || exit 0
+
+status=0
+if ! cryptsetup luksDump --dump-json-metadata "$volume" |
+  jq -e '.tokens[] | select(.type == "systemd-tpm2")' >/dev/null; then
+  # An empty PASSWORD unlocks through the clear key.
+  PASSWORD='' systemd-cryptenroll \
+    --tpm2-device=auto --tpm2-pcrs=7 \
+    --tpm2-public-key=/run/systemd/tpm2-pcr-public-key.pem --tpm2-public-key-pcrs=11 \
+    "$volume" || status=$?
+fi
+systemd-cryptenroll --wipe-slot=empty "$volume"
+exit "$status"
