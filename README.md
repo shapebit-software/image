@@ -21,15 +21,16 @@ To use Docker instead, add `ENGINE=docker` to any command.
 ## Usage
 
 ```bash
-make test    # build, check, install, boot twice, and check the running system
-make vm      # boot build/disk.raw with the serial console on this terminal
-make ssh     # root shell in the running VM (from another terminal)
-make clean   # remove build/, including the disk, keys, and recovery key
-make help    # all targets
+make test         # build, check, install, boot twice, and check the running system
+make test-update  # install, update to a new build, check it, and roll back
+make vm           # boot build/disk.raw with the serial console on this terminal
+make ssh          # root shell in the running VM (from another terminal)
+make clean        # remove build/, including the disk, keys, and recovery key
+make help         # all targets
 ```
 
 Settings are variables at the top of the [Makefile](Makefile), such as
-`IMAGE`, `IMAGE_SIZE`, `DISK_SIZE`, and `SSH_PORT`.
+`IMAGE`, `IMAGE_VERSION`, `IMAGE_SIZE`, `DISK_SIZE`, and `SSH_PORT`.
 
 ## How it works
 
@@ -104,6 +105,20 @@ the next boot unlocks the larger LUKS2 volume and grows Btrfs (systemd-growfs).
 The VM's EFI variables (`build/efivars.fd`) and TPM state (`build/tpm/`)
 belong to the disk; `make disk` resets them.
 
+### Updates
+
+Each build records `IMAGE_VERSION` in `/usr/lib/os-release`. `make publish`
+([scripts/publish.sh](scripts/publish.sh)) pushes the image to a local
+registry container on the host, and installed systems update from it as
+`UPDATE_REF`: the VM reaches the host at `10.0.2.2`, and `install.sh` marks
+that plain-HTTP registry as insecure.
+
+On the VM, `bootc upgrade` stages the new build, which boots after a restart;
+`bootc rollback` returns to the previous one. The TPM unlocks the new build
+without re-enrollment, because its UKI carries PCR 11 values signed by the
+same key, and each deployment's `/etc` carries the machine's own changes.
+[tests/update.sh](tests/update.sh) checks all of this.
+
 ### Homes
 
 Users are [systemd-homed](https://systemd.io/HOME_DIRECTORY/) homes. Each home
@@ -119,14 +134,14 @@ run `homectl create` in `make ssh` to add one.
 
 ## Layout
 
-| Path                 | Purpose                                                   |
-| -------------------- | --------------------------------------------------------- |
-| `Containerfile`      | The unsealed system.                                      |
-| `Containerfile.seal` | Adds the signed UKI to the built system.                  |
-| `rootfs/`            | Files copied verbatim into the image; paths mirror `/`.   |
-| `scripts/`           | Keys, image build, disk install, QEMU, SSH.               |
-| `tests/`             | Checks for the image (`image.sh`) and the VM (`boot.sh`). |
-| `build/`             | Generated outputs (ignored by Git).                       |
+| Path                 | Purpose                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `Containerfile`      | The unsealed system.                                               |
+| `Containerfile.seal` | Adds the signed UKI to the built system.                           |
+| `rootfs/`            | Files copied verbatim into the image; paths mirror `/`.            |
+| `scripts/`           | Keys, image build, publishing, disk install, QEMU, SSH.            |
+| `tests/`             | Checks: image (`image.sh`), VM (`boot.sh`), updates (`update.sh`). |
+| `build/`             | Generated outputs (ignored by Git).                                |
 
 ## Installer
 
@@ -147,6 +162,11 @@ systemd credentials:
 
 ## Not yet implemented
 
+- Trial boots with automatic rollback (systemd's Automatic Boot Assessment)
+  and the boot health check. They wait on upstream: bootc's composefs backend
+  does not yet add boot counters to its entries (planned through
+  `/etc/kernel/tries`), and Fedora 44's SELinux policy does not yet let
+  `systemd-bless-boot` rename entries on the ESP.
 - A minimal signed recovery UKI.
 - The home storage policy: guaranteed minimums, the machine reserve, and
   low-space states. systemd-homed's defaults size homes for now.

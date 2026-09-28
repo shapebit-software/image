@@ -4,7 +4,7 @@
 # OCI archive in BUILD/image.tar, which disk.sh installs.
 # Usage: image.sh (called by `make image`).
 set -euo pipefail
-: "${ENGINE:?}" "${IMAGE:?}" "${FEDORA_VERSION:?}" "${BUILD:?}" "${KEYS_DIR:?}"
+: "${ENGINE:?}" "${IMAGE:?}" "${FEDORA_VERSION:?}" "${BUILD:?}" "${KEYS_DIR:?}" "${IMAGE_VERSION:?}"
 
 unsealed=$IMAGE-unsealed
 archive=$BUILD/unsealed.tar
@@ -30,7 +30,8 @@ done
 # the keys change.
 keys_id=$(cat "$KEYS_DIR"/*.crt "$KEYS_DIR/tpm2-pcr-public.pem" | sha256sum | cut -d ' ' -f 1)
 
-$ENGINE build --build-arg FEDORA_VERSION="$FEDORA_VERSION" --build-arg KEYS_ID="$keys_id" "${secrets[@]}" \
+$ENGINE build --build-arg FEDORA_VERSION="$FEDORA_VERSION" --build-arg IMAGE_VERSION="$IMAGE_VERSION" \
+  --build-arg KEYS_ID="$keys_id" "${secrets[@]}" \
   -f Containerfile -t "$unsealed" .
 
 # The digest comes from the image as `bootc install` reads it: imported into

@@ -63,4 +63,7 @@ EOF
 FROM system
 COPY --from=bootloader /out/ /usr/lib/systemd/boot/efi/
 COPY --from=keys /out/ /usr/lib/bootc/install/secureboot-keys/auto/
+# Identifies this build; last, so a new version rebuilds only this layer.
+ARG IMAGE_VERSION
+RUN test -n "$IMAGE_VERSION" && echo "IMAGE_VERSION=$IMAGE_VERSION" >>/usr/lib/os-release
 RUN bootc container lint

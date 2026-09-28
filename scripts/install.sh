@@ -3,7 +3,7 @@
 # Runs inside the privileged image container started by disk.sh; the image
 # ships every tool used here.
 set -euo pipefail
-: "${DISK:?}" "${RECOVERY_KEY:?}" "${OWNER:?}" "${SOURCE_IMGREF:?}" "${IMAGE:?}"
+: "${DISK:?}" "${RECOVERY_KEY:?}" "${OWNER:?}" "${SOURCE_IMGREF:?}" "${UPDATE_REF:?}"
 
 # No udev in the container; device-mapper must not wait for it.
 export DM_DISABLE_UDEV=1
@@ -66,7 +66,7 @@ bootc install to-filesystem \
   --generic-image \
   --skip-finalize \
   --source-imgref "$SOURCE_IMGREF" \
-  --target-imgref "$IMAGE" \
+  --target-imgref "$UPDATE_REF" \
   --skip-fetch-check \
   "$target"
 
@@ -87,6 +87,14 @@ EOF
 # boot. "uninitialized" marks the first boot instead: systemd generates the ID
 # and saves it once that boot completes (ConditionFirstBoot, machine-id(5)).
 echo uninitialized >"$etc/machine-id"
+
+# The system updates from UPDATE_REF. The development registry serves plain
+# HTTP, so it is marked insecure (containers-registries.conf.d(5)).
+cat >"$etc/containers/registries.conf.d/50-update-registry.conf" <<EOF
+[[registry]]
+location = "${UPDATE_REF%%/*}"
+insecure = true
+EOF
 
 for mountpoint in "$target/boot" "$target"; do
   fstrim --quiet-unsupported "$mountpoint"

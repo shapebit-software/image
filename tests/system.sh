@@ -42,7 +42,7 @@ unlocked_by_tpm2() {
   grep -q 'TPM2 token unlocks volume' <<<"$log" && ! grep -q 'falling back' <<<"$log"
 }
 check "unlocked by the TPM" unlocked_by_tpm2
-machine_id_saved() { test -s /etc/machine-id && ! grep -q uninitialized /etc/machine-id && ! findmnt -q /etc/machine-id; }
+machine_id_saved() { test -s /etc/machine-id && ! grep -q uninitialized /etc/machine-id && ! findmnt /etc/machine-id >/dev/null; }
 check "machine ID is saved, not temporary" machine_id_saved
 check "TPM2 enrollment runs only on the first boot" test "$(systemctl show -P ConditionResult tpm2-enroll.service)" = no
 disk=/dev/$(lsblk -ndo PKNAME /dev/disk/by-partlabel/shapebit)
