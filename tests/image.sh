@@ -14,6 +14,16 @@ check "os-release identifies ShapeBit OS" test "$ID" = shapebit
 check "default target is multi-user" test "$(systemctl get-default)" = multi-user.target
 check "sshd is enabled" systemctl -q is-enabled sshd.service
 check "NetworkManager is enabled" systemctl -q is-enabled NetworkManager.service
-check "serial console karg is set" grep -q 'console=ttyS0' /usr/lib/bootc/kargs.d/10-console.toml
+check "systemd-homed is enabled" systemctl -q is-enabled systemd-homed.service
+check "PAM uses systemd-homed" grep -q pam_systemd_home /etc/pam.d/system-auth
+initramfs_skips_var() { lsinitrd /usr/lib/modules/*/initramfs.img -f usr/lib/composefs/setup-root-conf.toml | grep -q '^mount = "none"'; }
+check "initramfs leaves /var to fstab" initramfs_skips_var
+check "signed systemd-boot is present" test -s /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
+has_uki() { compgen -G '/boot/EFI/Linux/*.efi' >/dev/null; }
+check "UKI is present" has_uki
+uki_has_pcr_policy() { grep -aq '\.pcrsig' /boot/EFI/Linux/*.efi && grep -aq '\.pcrpkey' /boot/EFI/Linux/*.efi; }
+check "UKI carries a signed PCR policy" uki_has_pcr_policy
+has_sb_keys() { for key in PK KEK db; do test -s "/usr/lib/bootc/install/secureboot-keys/auto/$key.auth" || return 1; done; }
+check "Secure Boot keys are present" has_sb_keys
 
 exit "$failed"

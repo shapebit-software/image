@@ -1,32 +1,27 @@
 #!/usr/bin/env bash
-# Install IMAGE to the raw disk DISK, encrypted with the passphrase in LUKS_KEY.
-# The storage layout and install run inside the image (scripts/install.sh).
+# Install the image archive from image.sh to the raw disk DISK and save its
+# recovery key to RECOVERY_KEY. The storage layout and install run inside the
+# image (scripts/install.sh).
+# Usage: disk.sh (called by `make disk`).
 set -euo pipefail
-: "${ENGINE:?}" "${IMAGE:?}" "${BUILD:?}" "${DISK:?}" "${DISK_SIZE:?}" "${LUKS_KEY:?}"
+: "${ENGINE:?}" "${IMAGE:?}" "${BUILD:?}" "${DISK:?}" "${DISK_SIZE:?}" "${RECOVERY_KEY:?}"
 
 archive=$BUILD/image.tar
-trap 'rm -f "$archive"' EXIT
+[[ -f $archive ]] || { echo "error: $archive not found; run 'make image'" >&2; exit 1; }
 
-# bootc reads the image from an OCI archive, so it works with any engine's storage.
-# Docker always saves OCI layout; Podman needs --format.
-# ENGINE is unquoted on purpose: it may be a command with arguments, e.g. "sudo podman".
-save_args=()
-if $ENGINE save --help | grep -q -- --format; then
-  save_args=(--format oci-archive)
-fi
-mkdir -p "$BUILD"
-$ENGINE save "${save_args[@]}" -o "$archive" "$IMAGE"
-
-rm -f "$DISK"
+# A new disk is a new machine: fresh EFI variables and TPM (see vm.sh).
+rm -rf "$DISK" "$RECOVERY_KEY" "$BUILD/efivars.fd" "$BUILD/tpm"
 truncate -s "$DISK_SIZE" "$DISK"
+mkdir -p "$(dirname "$RECOVERY_KEY")"
 
+# ENGINE is unquoted on purpose: it may be a command with arguments, e.g. "sudo podman".
 $ENGINE run --rm --privileged \
   -v /dev:/dev \
   -v "$(realpath "$archive"):/image.tar:ro" \
   -v "$(realpath "$DISK"):/disk.raw" \
-  -v "$(realpath "$LUKS_KEY"):/luks.key:ro" \
+  -v "$(realpath "$(dirname "$RECOVERY_KEY")"):/out" \
   -v "$(realpath scripts/install.sh):/install.sh:ro" \
-  -e DISK=/disk.raw -e LUKS_KEY=/luks.key \
+  -e DISK=/disk.raw -e RECOVERY_KEY="/out/$(basename "$RECOVERY_KEY")" -e OWNER="$(id -u):$(id -g)" \
   -e SOURCE_IMGREF=oci-archive:/image.tar -e IMAGE="$IMAGE" \
   "$IMAGE" \
   /install.sh

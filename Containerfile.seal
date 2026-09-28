@@ -1,0 +1,41 @@
+# check=skip=InvalidDefaultArgInFrom
+# Seal the image built from Containerfile: add a UKI, signed with db, whose
+# command line pins the image's composefs digest, and which carries signed
+# expected PCR 11 values for TPM2 unlock. scripts/image.sh computes
+# COMPOSEFS_DIGEST from the built image, as `bootc install` does; a digest
+# computed inside a build differs, since builds do not see the image's exact
+# file metadata.
+# UNSEALED has no default: scripts/image.sh always passes it.
+ARG UNSEALED
+FROM ${UNSEALED} AS unsealed
+
+FROM unsealed AS uki
+ARG COMPOSEFS_DIGEST
+ARG KEYS_ID
+RUN dnf -y install systemd-ukify sbsigntools && mkdir /out
+RUN --mount=type=secret,id=db.key --mount=type=secret,id=db.crt \
+    --mount=type=secret,id=tpm2-pcr-private.pem --mount=type=secret,id=tpm2-pcr-public.pem <<'EOF'
+set -euo pipefail
+: "${COMPOSEFS_DIGEST:?}"
+kernel=$(basename /usr/lib/modules/*)
+kargs=$(python3 -c '
+import glob, tomllib
+print(" ".join(karg for path in sorted(glob.glob("/usr/lib/bootc/kargs.d/*.toml"))
+               for karg in tomllib.load(open(path, "rb")).get("kargs", [])))')
+ukify build \
+  --linux "/usr/lib/modules/$kernel/vmlinuz" \
+  --initrd "/usr/lib/modules/$kernel/initramfs.img" \
+  --uname "$kernel" \
+  --os-release @/usr/lib/os-release \
+  --cmdline "$kargs composefs=$COMPOSEFS_DIGEST" \
+  --signtool sbsign \
+  --secureboot-private-key /run/secrets/db.key \
+  --secureboot-certificate /run/secrets/db.crt \
+  --pcr-private-key /run/secrets/tpm2-pcr-private.pem \
+  --pcr-public-key /run/secrets/tpm2-pcr-public.pem \
+  --output "/out/$kernel.efi"
+EOF
+
+# /boot is outside the composefs digest, so adding the UKI keeps it valid.
+FROM unsealed
+COPY --from=uki /out/ /boot/EFI/Linux/

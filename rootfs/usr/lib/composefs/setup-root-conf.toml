@@ -1,0 +1,4 @@
+# bootc's initramfs setup mounts the composefs root. /var is not bind-mounted
+# from the deployment state: /etc/fstab mounts the @machine subvolume there.
+[var]
+mount = "none"

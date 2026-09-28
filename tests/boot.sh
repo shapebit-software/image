@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Boot DISK in the background, run tests/system.sh inside it, then stop the VM.
+# Boot DISK in the background, run tests/system.sh inside it, then power it off.
 set -euo pipefail
-: "${BUILD:?}"
-
-BOOT_TIMEOUT=${BOOT_TIMEOUT:-300}
+: "${RECOVERY_KEY:?}"
 cd "$(dirname "$0")/.."
 
+# No UNLOCK_KEY: the disk must unlock with the TPM alone.
 scripts/vm.sh --background
-trap 'kill "$(cat "$BUILD/vm.pid")" 2>/dev/null || true' EXIT
+trap 'scripts/vm.sh --stop' EXIT
 
-echo "Waiting up to ${BOOT_TIMEOUT}s for SSH (console: $BUILD/serial.log)"
-deadline=$((SECONDS + BOOT_TIMEOUT))
-until scripts/ssh.sh true 2>/dev/null; do
-  if ((SECONDS >= deadline)); then
-    echo "error: no SSH after ${BOOT_TIMEOUT}s; last console lines:" >&2
-    tail -n 30 "$BUILD/serial.log" >&2
-    exit 1
-  fi
-  sleep 5
-done
+failed=0
+scripts/ssh.sh bash -s <tests/system.sh || failed=1
 
-scripts/ssh.sh bash -s < tests/system.sh
+# The recovery key lives only on the host, so this check runs from here.
+if scripts/ssh.sh 'cryptsetup open --test-passphrase --key-file=- /dev/disk/by-partlabel/shapebit' <"$RECOVERY_KEY"; then
+  echo "ok   recovery key unlocks the volume"
+else
+  echo "FAIL recovery key unlocks the volume"
+  failed=1
+fi
+
+exit "$failed"

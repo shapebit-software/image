@@ -1,0 +1,4 @@
+# The root is the LUKS2 partition that systemd finds by its GPT type; the
+# system lives in its @base subvolume, mounted writable for the composefs
+# state (/etc and /var). Machine-independent, so the UKI can carry it.
+kargs = ["rw", "rootflags=subvol=@base"]

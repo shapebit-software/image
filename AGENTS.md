@@ -13,7 +13,10 @@
   `/etc` and `/var` are machine state.
 - **Every behavior gets a check.** Image content goes in `tests/image.sh`;
   runtime behavior goes in `tests/system.sh`. Use only tools the image ships.
+  Only checks that need a host-side secret, such as the recovery key, go in
+  `tests/boot.sh`.
 - **Never put credentials in the image or disk.** Development access goes
-  through systemd credentials at VM launch.
+  through systemd credentials at VM launch. Private signing keys reach builds
+  only as build secrets; only signed binaries and public keys enter the image.
 - **Keep shell scripts small.** Use Bash with `set -euo pipefail`, and start
   each script with a comment that says what it does and how to call it.
