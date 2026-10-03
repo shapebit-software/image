@@ -35,7 +35,7 @@ mkfs.vfat -F 32 -n ESP "$esp" >/dev/null
 # A random installation key opens the volume during the install and is then
 # replaced by two slots: a recovery key, saved to RECOVERY_KEY for the owner,
 # and a clear key (an empty passphrase, so it needs no costly key derivation)
-# that unlocks the first boot. There, tpm2-enroll.service replaces the
+# that unlocks the first boot. There, tpm2-firstboot.service replaces the
 # clear key with the machine's TPM2.
 mkdir -p "${install_key%/*}"
 (umask 077 && head -c 64 /dev/urandom >"$install_key")

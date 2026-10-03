@@ -6,7 +6,7 @@
 #                            BUILD/serial.log, PID in BUILD/vm.pid.
 #        vm.sh --stop        power off the detached VM, so its writes reach the disk
 set -euo pipefail
-: "${BUILD:?}" "${DISK:?}" "${SSH_PORT:?}" "${SSH_KEY:?}" "${BOOT_TIMEOUT:?}"
+: "${BUILD:?}" "${DISK:?}" "${SSH_PORT:?}" "${SSH_KEY:?}" "${OWNER_NAME:?}" "${OWNER_PASSWORD:?}" "${BOOT_TIMEOUT:?}"
 
 [[ -f $DISK ]] || { echo "error: $DISK not found; run 'make disk'" >&2; exit 1; }
 cd "$(dirname "$0")/.."
@@ -52,7 +52,11 @@ swtpm socket --tpm2 --tpmstate dir="$tpm" --ctrl type=unixio,path="$tpm/swtpm.so
   --terminate --daemon
 
 # Development access reaches the guest as systemd credentials; nothing is
-# baked into the disk.
+# baked into the disk. On first boot, systemd-homed-firstboot creates the
+# first owner from home.create.* instead of asking on the console; the small
+# home leaves the disk to the system.
+owner=$(printf '{"memberOf":["wheel"],"diskSize":%d,"secret":{"password":["%s"]}}' \
+  $((1024 * 1024 * 1024)) "$(cat "$OWNER_PASSWORD")")
 args=(
   -machine q35,smm=on,accel=kvm -cpu host -m 4096 -smp 4
   -global driver=cfi.pflash01,property=secure,value=on
@@ -64,6 +68,7 @@ args=(
   -device tpm-crb,tpmdev=tpm
   -nic "user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22"
   -smbios "type=11,value=io.systemd.credential.binary:ssh.authorized_keys.root=$(base64 -w0 <"$SSH_KEY.pub")"
+  -smbios "type=11,value=io.systemd.credential.binary:home.create.$OWNER_NAME=$(printf %s "$owner" | base64 -w0)"
 )
 
 if [[ ${1:-} != --background ]]; then

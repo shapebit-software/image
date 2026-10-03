@@ -12,6 +12,9 @@ IMAGE_SIZE     ?= 12G
 DISK_SIZE      ?= 20G
 SSH_PORT       ?= 2222
 SSH_KEY        ?= $(BUILD)/ssh/id_ed25519
+# The VM's first owner, an administrator created on first boot.
+OWNER_NAME     ?= dev
+OWNER_PASSWORD ?= $(BUILD)/owner-password
 RECOVERY_KEY   ?= $(BUILD)/recovery-key
 KEYS_DIR       ?= $(BUILD)/keys
 BOOT_TIMEOUT   ?= 300
@@ -20,7 +23,7 @@ BOOT_TIMEOUT   ?= 300
 REGISTRY_PORT  ?= 5000
 UPDATE_REF     ?= 10.0.2.2:$(REGISTRY_PORT)/shapebit-os:dev
 
-export ENGINE IMAGE FEDORA_VERSION IMAGE_VERSION BUILD DISK IMAGE_SIZE DISK_SIZE SSH_PORT SSH_KEY RECOVERY_KEY KEYS_DIR BOOT_TIMEOUT REGISTRY_PORT UPDATE_REF
+export ENGINE IMAGE FEDORA_VERSION IMAGE_VERSION BUILD DISK IMAGE_SIZE DISK_SIZE SSH_PORT SSH_KEY OWNER_NAME OWNER_PASSWORD RECOVERY_KEY KEYS_DIR BOOT_TIMEOUT REGISTRY_PORT UPDATE_REF
 
 .DEFAULT_GOAL := help
 .PHONY: help image check publish disk vm ssh test test-update clean
@@ -43,16 +46,16 @@ publish: image ## Push the image to the local update registry
 disk: image ## Install the image to an encrypted raw disk
 	scripts/disk.sh
 
-vm: $(SSH_KEY) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
+vm: $(SSH_KEY) $(OWNER_PASSWORD) ## Boot the disk in QEMU on this terminal (Ctrl-A X quits)
 	scripts/vm.sh
 
 ssh: $(SSH_KEY) ## Open a root shell in the running VM
 	scripts/ssh.sh
 
-test: check disk $(SSH_KEY) ## Boot the disk and run checks inside the system
+test: check disk $(SSH_KEY) $(OWNER_PASSWORD) ## Boot the disk and run checks inside the system
 	tests/boot.sh
 
-test-update: disk $(SSH_KEY) ## Update an installed system to a new build, then roll back
+test-update: disk $(SSH_KEY) $(OWNER_PASSWORD) ## Update an installed system to a new build, then roll back
 	tests/update.sh
 
 clean: ## Remove build outputs
@@ -61,6 +64,11 @@ clean: ## Remove build outputs
 $(SSH_KEY):
 	mkdir -p $(@D)
 	ssh-keygen -q -t ed25519 -N '' -C shapebit-dev -f $@
+
+# Development-only password of the VM's first owner.
+$(OWNER_PASSWORD):
+	mkdir -p $(@D)
+	head -c 18 /dev/urandom | base64 | tr -d '\n' > $@
 
 # Development-only signing keys.
 $(KEYS) &:

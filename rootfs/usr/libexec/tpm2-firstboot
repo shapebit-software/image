@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 # Replace the root volume's first-boot clear key (an empty passphrase, which
 # systemd-cryptsetup tries after the TPM) with a TPM2 key slot bound to PCR 7
-# and signed PCR 11. Run by tpm2-enroll.service on the first boot;
+# and signed PCR 11. Run by tpm2-firstboot.service on the first boot;
 # does nothing if there is no clear key, as after an installer enrolled the TPM.
 # The clear key is wiped even if the TPM cannot be enrolled, so the recovery
 # key then unlocks the volume.

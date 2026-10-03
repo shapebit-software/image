@@ -1,2 +1,4 @@
-# Kernel console on both the screen and the first serial port.
-kargs = ["console=tty0", "console=ttyS0,115200n8"]
+# Kernel console on the first serial port and the screen. The last one is
+# /dev/console, where boot status and prompts (first owner, recovery key)
+# appear, so the screen comes last.
+kargs = ["console=ttyS0,115200n8", "console=tty0"]

@@ -1,5 +1,5 @@
 # Nothing built in enrolls a TPM2 in an existing volume at boot, so this unit
-# runs a short script; see /usr/libexec/tpm2-enroll. It runs on the
+# runs a short script; see /usr/libexec/tpm2-firstboot. It runs on the
 # first boot only. The machine ID is saved when first-boot-complete.target is
 # reached, so if that boot is interrupted, the next boot runs this again.
 [Unit]
@@ -11,7 +11,7 @@ Wants=first-boot-complete.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/libexec/tpm2-enroll
+ExecStart=/usr/libexec/tpm2-firstboot
 
 [Install]
 WantedBy=multi-user.target

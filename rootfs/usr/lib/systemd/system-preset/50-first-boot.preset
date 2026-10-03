@@ -1,0 +1,4 @@
+# First-boot setup of a raw disk image: TPM enrollment, and the first owner,
+# asked for on the console unless a home.create.* credential provides one.
+enable tpm2-firstboot.service
+enable systemd-homed-firstboot.service

@@ -5,7 +5,7 @@
 # the new build.
 # Usage: update.sh (called by `make test-update`).
 set -euo pipefail
-: "${IMAGE_VERSION:?}"
+: "${IMAGE_VERSION:?}" "${OWNER_NAME:?}"
 cd "$(dirname "$0")/.."
 
 next=$IMAGE_VERSION.next
@@ -32,7 +32,7 @@ scripts/vm.sh --background
 scripts/ssh.sh bootc upgrade --quiet
 reboot
 expect_version "$next" "upgrade boots the new build"
-scripts/ssh.sh bash -s <tests/system.sh || failed=1
+scripts/ssh.sh "OWNER_NAME=$OWNER_NAME bash -s" <tests/system.sh || failed=1
 
 scripts/ssh.sh bootc rollback
 reboot

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Checks run inside the booted system (`make test`); uses only tools the image ships.
+# OWNER_NAME is the first owner that the VM passes as a credential.
 set -uo pipefail
+: "${OWNER_NAME:?}"
 
 failed=0
 check() {
@@ -44,7 +46,7 @@ unlocked_by_tpm2() {
 check "unlocked by the TPM" unlocked_by_tpm2
 machine_id_saved() { test -s /etc/machine-id && ! grep -q uninitialized /etc/machine-id && ! findmnt /etc/machine-id >/dev/null; }
 check "machine ID is saved, not temporary" machine_id_saved
-check "TPM2 enrollment runs only on the first boot" test "$(systemctl show -P ConditionResult tpm2-enroll.service)" = no
+check "TPM2 enrollment runs only on the first boot" test "$(systemctl show -P ConditionResult tpm2-firstboot.service)" = no
 disk=/dev/$(lsblk -ndo PKNAME /dev/disk/by-partlabel/shapebit)
 root_partition_fills_disk() {
   local free
@@ -69,6 +71,11 @@ check "@people is mounted at /var/home" test "$(findmnt -no FSROOT /var/home)" =
 has_recovery() { btrfs subvolume list /sysroot | grep -Eq ' path @recovery$'; }
 check "@recovery subvolume exists" has_recovery
 check "serial console karg is active" grep -q 'console=ttyS0' /proc/cmdline
+
+owner_is_admin() { id -nG "$OWNER_NAME" | grep -qw wheel; }
+check "first owner exists and administers the machine" owner_is_admin
+owner_home_is_luks() { homectl inspect -j "$OWNER_NAME" | jq -e '[.binding[].storage] == ["luks"]' >/dev/null; }
+check "first owner has a LUKS2 home" owner_home_is_luks
 
 # A throwaway systemd-homed user shows that homes are encrypted images in @people.
 # It is small, since the test is about where homes live, not how big they get.

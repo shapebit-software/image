@@ -16,6 +16,7 @@ check "default target is multi-user" test "$(systemctl get-default)" = multi-use
 check "sshd is enabled" systemctl -q is-enabled sshd.service
 check "NetworkManager is enabled" systemctl -q is-enabled NetworkManager.service
 check "systemd-homed is enabled" systemctl -q is-enabled systemd-homed.service
+check "first-owner prompt is enabled" systemctl -q is-enabled systemd-homed-firstboot.service
 check "PAM uses systemd-homed" grep -q pam_systemd_home /etc/pam.d/system-auth
 initramfs_skips_var() { lsinitrd /usr/lib/modules/*/initramfs.img -f usr/lib/composefs/setup-root-conf.toml | grep -q '^mount = "none"'; }
 check "initramfs leaves /var to fstab" initramfs_skips_var
