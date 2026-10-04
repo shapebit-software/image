@@ -1,31 +1,34 @@
 #!/usr/bin/env bash
-# Install the image archive from image.sh to a disk image of IMAGE_SIZE, save
-# its recovery key to RECOVERY_KEY, and enlarge it to the raw disk DISK of
-# DISK_SIZE, as when the image is written to a larger disk. The storage layout and install run inside the
-# image (scripts/install.sh).
-# Usage: disk.sh (called by `make disk`).
+# Install ShapeBit to the raw disk DISK of DISK_SIZE the way a user does: boot
+# the installer medium MEDIUM in QEMU with the empty disk attached, and let the
+# installer install to it. Saves the recovery key to RECOVERY_KEY.
+# Usage: disk.sh           check the medium (tests/installer.sh), then install
+#                          through installerctl, without the UI
+#        disk.sh --window  open the VM in a window, to install by hand
 set -euo pipefail
-: "${ENGINE:?}" "${IMAGE:?}" "${BUILD:?}" "${DISK:?}" "${IMAGE_SIZE:?}" "${DISK_SIZE:?}" "${RECOVERY_KEY:?}" "${UPDATE_REF:?}"
+: "${BUILD:?}" "${DISK:?}" "${DISK_SIZE:?}" "${MEDIUM:?}" "${RECOVERY_KEY:?}" "${OWNER_NAME:?}" "${OWNER_PASSWORD:?}" \
+  "${LOCALE:?}" "${KEYBOARD_LAYOUT:?}" "${TIME_ZONE:?}"
+cd "$(dirname "$0")/.."
 
-archive=$BUILD/image.tar
-[[ -f $archive ]] || { echo "error: $archive not found; run 'make image'" >&2; exit 1; }
+[[ -f $MEDIUM ]] || { echo "error: $MEDIUM not found; run 'make installer'" >&2; exit 1; }
 
 # A new disk is a new machine: fresh EFI variables and TPM (see vm.sh).
 rm -rf "$DISK" "$RECOVERY_KEY" "$BUILD/efivars.fd" "$BUILD/tpm" "$BUILD/serial.log"
-truncate -s "$IMAGE_SIZE" "$DISK"
-mkdir -p "$(dirname "$RECOVERY_KEY")"
-
-# ENGINE is unquoted on purpose: it may be a command with arguments, e.g. "sudo podman".
-$ENGINE run --rm --privileged \
-  -v /dev:/dev \
-  -v "$(realpath "$archive"):/image.tar:ro" \
-  -v "$(realpath "$DISK"):/disk.raw" \
-  -v "$(realpath "$(dirname "$RECOVERY_KEY")"):/out" \
-  -v "$(realpath scripts/install.sh):/install.sh:ro" \
-  -e DISK=/disk.raw -e RECOVERY_KEY="/out/$(basename "$RECOVERY_KEY")" -e OWNER="$(id -u):$(id -g)" \
-  -e SOURCE_IMGREF=oci-archive:/image.tar -e UPDATE_REF="$UPDATE_REF" \
-  "$IMAGE" \
-  /install.sh
-
-# The first boot grows the root into the added space.
 truncate -s "$DISK_SIZE" "$DISK"
+
+if [[ ${1:-} == --window ]]; then
+  exec scripts/vm.sh --installer --window
+fi
+
+trap 'scripts/vm.sh --stop' EXIT
+scripts/vm.sh --installer --background
+scripts/ssh.sh bash -s <tests/installer.sh
+
+# The password and the recovery key stay in the VM's memory (/run). The small
+# home leaves the disk to the system.
+scripts/ssh.sh 'umask 077 && cat >/run/owner-password' <"$OWNER_PASSWORD"
+scripts/ssh.sh installerctl install --disk serial-target --user "$OWNER_NAME" \
+  --home-size $((1024 * 1024 * 1024)) \
+  --locale "$LOCALE" --keyboard-layout "$KEYBOARD_LAYOUT" --time-zone "$TIME_ZONE" \
+  --password-file /run/owner-password --recovery-key-file /run/recovery-key
+(umask 077 && scripts/ssh.sh cat /run/recovery-key >"$RECOVERY_KEY")

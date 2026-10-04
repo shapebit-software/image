@@ -1,6 +1,7 @@
 # ShapeBit OS: console-only bootc image, booted by systemd-boot from a signed UKI.
 # This is the unsealed system; Containerfile.seal adds the UKI (see
-# scripts/image.sh). Signing needs the Secure Boot keys as build secrets PK,
+# scripts/image.sh), and Containerfile.installer builds the installer medium
+# from it. Signing needs the Secure Boot keys as build secrets PK,
 # KEK, and db (.key and .crt each), and KEYS_ID, which changes with them.
 # Only signed binaries and public keys reach the image.
 ARG FEDORA_VERSION=44
@@ -14,12 +15,13 @@ LABEL org.opencontainers.image.title="ShapeBit OS" \
 COPY rootfs/ /
 
 # The base image ships only GRUB; bootc installs systemd-boot from this package.
+# The base image has only the C locale; the langpacks add the locales that the
+# installer offers.
 # dnf state in /var and /run is removed, since bootc ignores it on install.
-RUN dnf -y install systemd-boot-unsigned && dnf clean all && \
+RUN dnf -y install systemd-boot-unsigned glibc-all-langpacks && dnf clean all && \
     rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
 
-RUN systemctl set-default multi-user.target && \
-    systemctl preset tpm2-firstboot.service systemd-homed-firstboot.service
+RUN systemctl set-default multi-user.target
 
 # Logins for systemd-homed users need pam_systemd_home. authselect's checksum
 # in /var is dropped, as in the base image; the configuration lives in /etc.

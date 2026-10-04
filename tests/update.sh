@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# Update an installed system and roll it back: boot DISK once (its first boot),
-# build and publish IMAGE_VERSION.next, upgrade to it with bootc, run
-# tests/system.sh on it, then roll back. Leaves IMAGE and BUILD/image.tar at
-# the new build.
+# Update an installed system and roll it back: build and publish
+# IMAGE_VERSION.next, upgrade DISK to it with bootc, run tests/system.sh on
+# it, then roll back. Leaves IMAGE and BUILD/image.tar at the new build.
 # Usage: update.sh (called by `make test-update`).
 set -euo pipefail
 : "${IMAGE_VERSION:?}" "${OWNER_NAME:?}"
@@ -21,11 +20,7 @@ expect_version() {
 }
 trap 'scripts/vm.sh --stop' EXIT
 
-scripts/vm.sh --background
-scripts/ssh.sh systemctl is-system-running --wait >/dev/null || true
-scripts/vm.sh --stop
-
-IMAGE_VERSION=$next scripts/image.sh
+make --no-print-directory image IMAGE_VERSION="$next"
 scripts/publish.sh
 
 scripts/vm.sh --background

@@ -1,9 +1,9 @@
 # ShapeBit OS image
 
 The bootable ShapeBit OS image: a [bootc](https://bootc-dev.github.io/bootc/)
-container built on Fedora bootc 44, installed to a disk that follows the
-[Base System](https://shapebit.software/docs/) architecture. It is currently
-console-only.
+container built on Fedora bootc 44, and the installer medium that installs it
+to a disk that follows the [Base System](https://shapebit.software/docs/)
+architecture. The system is currently console-only.
 
 ## Requirements
 
@@ -20,17 +20,21 @@ To use Docker instead, add `ENGINE=docker` to any command.
 
 ## Usage
 
+The installer source is expected next to this repository, in `../installer`
+(`INSTALLER_SRC`), as in the ShapeBit OS monorepo.
+
 ```bash
-make test         # build, check, install, boot twice, and check the running system
-make test-update  # install, update to a new build, check it, and roll back
-make vm           # boot build/disk.raw with the serial console on this terminal
-make ssh          # root shell in the running VM (from another terminal)
-make clean        # remove build/, including the disk, keys, and recovery key
-make help         # all targets
+make test          # build, check, install with the installer, boot, and check the running system
+make test-update   # install, update to a new build, check it, and roll back
+make installer-vm  # boot the installer medium in a window, to install by hand
+make vm            # boot build/disk.raw with the serial console on this terminal
+make ssh           # root shell in the running VM (from another terminal)
+make clean         # remove build/, including the disks, keys, and recovery key
+make help          # all targets
 ```
 
 Settings are variables at the top of the [Makefile](Makefile), such as
-`IMAGE`, `IMAGE_VERSION`, `IMAGE_SIZE`, `DISK_SIZE`, and `SSH_PORT`.
+`IMAGE`, `IMAGE_VERSION`, `DISK_SIZE`, `MEDIUM_SIZE`, and `SSH_PORT`.
 
 ## How it works
 
@@ -49,13 +53,26 @@ in `build/keys/`: Secure Boot PK, KEK, and db, and a TPM2 PCR policy key.
 
 The sealed image is saved as `build/image.tar`.
 
+### Installer medium
+
+`make installer` builds the medium in the same two phases.
+[Containerfile.installer](Containerfile.installer) adds, to the unsealed
+system, the [installer](https://github.com/shapebit-software/installer), the
+`cage` kiosk compositor that shows it, and the sealed system archive as the
+payload; sealing then covers all of it with the medium's own signed UKI.
+[scripts/medium.sh](scripts/medium.sh) writes the result to
+`build/installer.raw`: an EFI System Partition and one unencrypted Btrfs
+filesystem. The medium holds no secrets.
+
 ### Disk
 
-`make disk` ([scripts/disk.sh](scripts/disk.sh)) installs the image to a raw
-disk image of `IMAGE_SIZE`, then enlarges it to `DISK_SIZE`, as when the image
-is written to a larger disk. [scripts/install.sh](scripts/install.sh) lays out
-the disk inside the image container and installs with bootc's composefs
-backend.
+`make disk` ([scripts/disk.sh](scripts/disk.sh)) installs the way a user does:
+it boots the medium in QEMU with an empty disk of `DISK_SIZE` attached, checks
+the medium ([tests/installer.sh](tests/installer.sh)), and runs the installer
+through `installerctl`, the command-line client of the same D-Bus interface
+that the UI uses. `make installer-vm` opens the same VM in a window instead.
+
+The installer lays out the disk and installs with bootc's composefs backend.
 
 | Partition  | Content                                                        |
 | ---------- | -------------------------------------------------------------- |
@@ -74,43 +91,40 @@ unlocks it without machine-specific kernel arguments, which a UKI cannot carry.
 
 ### Boot and unlock
 
-The VM firmware starts in setup mode, so on first boot systemd-boot enrolls the
-image's Secure Boot keys and reboots. From then on the firmware runs only the
-signed systemd-boot, which runs only the signed UKI, which mounts only the
-system whose digest it pins. Development builds use no Microsoft-signed shim.
+The VM firmware starts in setup mode, so on its first boot the medium's
+systemd-boot enrolls the image's Secure Boot keys and reboots. From then on
+the firmware runs only the signed systemd-boot, which runs only the signed
+UKI, which mounts only the system whose digest it pins. Development builds use
+no Microsoft-signed shim.
 
-The LUKS2 volume holds these key slots:
+The installer gives the LUKS2 volume two key slots:
 
-| Key slot     | Added by                                    | Removed by     |
-| ------------ | ------------------------------------------- | -------------- |
-| Recovery key | `install.sh`, saved to `build/recovery-key` | never          |
-| Clear key    | `install.sh`: an empty passphrase           | the first boot |
-| TPM2         | the first boot                              | never          |
+| Key slot     | Purpose                                                  |
+| ------------ | -------------------------------------------------------- |
+| TPM2         | Unlocks every normal boot, without a prompt.             |
+| Recovery key | Shown once by the installer; saved to `build/recovery-key` by `make disk`. |
 
-On the first boot the clear key unlocks the volume without a prompt, and
-`tpm2-firstboot.service`, which runs only on the first boot (systemd's
-`ConditionFirstBoot`), replaces it with a TPM2 slot bound to PCR 7 (the
-Secure Boot policy) and to PCR 11 values signed by the PCR policy key. A new
-UKI signed with the same key unlocks without re-enrollment. Until that first
-boot, anyone with the disk can unlock it. If the TPM ever refuses, the console
-asks for a passphrase, and the recovery key works there.
+The TPM2 slot is bound to PCR 7 (the Secure Boot policy) and to PCR 11 values
+signed by the PCR policy key. The medium and the installed system are signed
+with the same keys, so the slot that the installer enrolls unlocks the
+installed system, and a new UKI signed with the same key unlocks without
+re-enrollment. If the TPM ever refuses, the console asks for a passphrase, and
+the recovery key works there. The random key that opens the volume during the
+installation never leaves memory and is removed before the installer finishes.
 
-`install.sh` marks the machine ID `uninitialized`, so the first boot generates
-it and saves it once that boot completes. An interrupted first boot is
-retried on the next boot.
-
-The first boot also grows the root partition into free space (systemd-repart);
-the next boot unlocks the larger LUKS2 volume and grows Btrfs (systemd-growfs).
+The installer marks the machine ID `uninitialized`, so the first boot generates
+it and saves it once that boot completes.
 
 The VM's EFI variables (`build/efivars.fd`) and TPM state (`build/tpm/`)
-belong to the disk; `make disk` resets them.
+belong to the machine, which the medium and the installed disk share;
+`make disk` resets them.
 
 ### Updates
 
 Each build records `IMAGE_VERSION` in `/usr/lib/os-release`. `make publish`
 ([scripts/publish.sh](scripts/publish.sh)) pushes the image to a local
 registry container on the host, and installed systems update from it as
-`UPDATE_REF`: the VM reaches the host at `10.0.2.2`, and `install.sh` marks
+`UPDATE_REF`: the VM reaches the host at `10.0.2.2`, and the installer marks
 that plain-HTTP registry as insecure.
 
 On the VM, `bootc upgrade` stages the new build, which boots after a restart;
@@ -123,45 +137,43 @@ same key, and each deployment's `/etc` carries the machine's own changes.
 
 Users are [systemd-homed](https://systemd.io/HOME_DIRECTORY/) homes. Each home
 is a LUKS2-encrypted image, `/home/<user>.home` in `@people`, with Btrfs
-inside, unlocked by its owner's password at login.
+inside, unlocked by its owner's password at login. The installer creates the
+first owner, an administrator (`wheel`), directly on the installed disk.
 
 ## Real hardware
 
-A disk image can run on an x86-64 UEFI machine with a TPM 2.0. Legacy (CSM)
-boot must be off. This is a developer trial: every key is a development key.
+The installer medium can install on an x86-64 UEFI machine with a TPM 2.0.
+Legacy (CSM) boot must be off. This is a developer trial: every key is a
+development key.
 
-1. Build a disk that has never booted. A booted one has already used its
-   clear key and enrolled the VM's TPM. With `DISK_SIZE` equal to
-   `IMAGE_SIZE`, there is no padding to write:
-
-   ```bash
-   make disk ENGINE=docker DISK_SIZE=12G
-   ```
-
-   Keep `build/recovery-key`: it is the only way in if the TPM refuses.
-2. Write it to a disk or USB drive of at least 16 GB. This erases the target;
-   check its name with `lsblk` first:
+1. Build the medium:
 
    ```bash
-   sudo dd if=build/disk.raw of=/dev/sdX bs=4M conv=fsync status=progress
+   make installer ENGINE=docker
    ```
 
-3. Choose the firmware setup:
+2. Write it to a USB drive of at least 16 GB. This erases the drive; check
+   its name with `lsblk` first:
+
+   ```bash
+   sudo dd if=build/installer.raw of=/dev/sdX bs=4M conv=fsync status=progress
+   ```
+
+3. Choose the firmware setup before the first boot of the medium, because the
+   installer binds the TPM to the Secure Boot state it finds:
    - **Secure Boot off.** The simplest trial; everything else is the same.
    - **Secure Boot in setup mode** (clear or reset the keys in the firmware
-     setup), for the full chain. On the first power-on, hold Space to open
-     the systemd-boot menu and choose **Enroll Secure Boot keys: auto**
-     before anything else boots; systemd-boot enrolls automatically only in
-     VMs. If the system boots first, its TPM slot binds to setup mode, and
-     enrolling the keys later needs the recovery key. The development keys
+     setup), for the full chain. Hold Space while the medium starts, to open
+     the systemd-boot menu, and choose **Enroll Secure Boot keys: auto**;
+     systemd-boot enrolls automatically only in VMs. The development keys
      replace the manufacturer's, so add-in cards whose firmware Microsoft
      signed, such as discrete GPUs, may not start; the firmware setup can
      restore the factory keys.
-4. Boot from it. The first boot unlocks without a prompt, grows the root,
-   enrolls the machine's TPM, and asks on the screen for the first owner: a
-   user name and a password. That user administers the machine (`sudo`).
-5. Reboot once. The disk now unlocks with the TPM, and the root fills the
-   disk.
+4. Boot the medium and follow the installer: language, keyboard layout, time
+   zone, account, and the disk, with the confirmation that erases it. The
+   network step offers nothing yet; skip it. Write down the recovery key that it shows: it is the only way
+   in if the TPM refuses.
+5. Remove the medium and restart. The disk unlocks with the TPM.
 6. Log in, connect to the network (`nmcli device wifi connect NAME --ask` for
    Wi-Fi), and run the system checks:
 
@@ -170,9 +182,8 @@ boot must be off. This is a developer trial: every key is a development key.
      sudo OWNER_NAME="$USER" bash
    ```
 
-If something fails, `journalctl -b -1` shows the first boot, and
-`journalctl -b -1 -u tpm2-firstboot.service -u systemd-repart.service` its
-first-boot steps.
+If something fails, `journalctl -b -u installer-backend.service` on the medium
+shows the installation steps.
 
 The first owner's home takes most of the free space, as systemd-homed sizes
 it by default until the home storage policy exists; that can leave too little
@@ -180,40 +191,24 @@ room for updates.
 
 ## Development access
 
-The image and disk contain no credentials. `make vm` and `make test` generate
-an SSH key in `build/ssh/` and pass its public key to the VM as the systemd
-credential `ssh.authorized_keys.root`. They also pass the first owner,
-`OWNER_NAME` (default `dev`) with the password in `build/owner-password`, as
-a `home.create.*` credential, so the first boot creates that user instead of
-asking on the console. There is no root password.
+The images and disks contain no credentials. `make disk`, `make vm`, and
+`make test` generate an SSH key in `build/ssh/` and pass its public key to the
+VM as the systemd credential `ssh.authorized_keys.root`. `make disk` gives the
+installer the first owner, `OWNER_NAME` (default `dev`) with the password in
+`build/owner-password`, and the settings `LOCALE`, `KEYBOARD_LAYOUT`, and
+`TIME_ZONE`. There is no root password.
 
 ## Layout
 
-| Path                 | Purpose                                                            |
-| -------------------- | ------------------------------------------------------------------ |
-| `Containerfile`      | The unsealed system.                                               |
-| `Containerfile.seal` | Adds the signed UKI to the built system.                           |
-| `rootfs/`            | Files copied verbatim into the image; paths mirror `/`.            |
-| `scripts/`           | Keys, image build, publishing, disk install, QEMU, SSH.            |
-| `tests/`             | Checks: image (`image.sh`), VM (`boot.sh`), updates (`update.sh`). |
-| `build/`             | Generated outputs (ignored by Git).                                |
-
-## Installer
-
-The installer will do the same on the target machine, where it knows the disk
-and can use the TPM: it sizes the partition to the disk and enrolls the TPM
-during installation, so the first-boot steps find nothing to do. What it
-configures maps to built-in mechanisms that the development tooling can pass as
-systemd credentials:
-
-| Setting                               | Mechanism                                             |
-| ------------------------------------- | ----------------------------------------------------- |
-| Target disk                           | The disk layout in `install.sh`                       |
-| TPM2 use, recovery key                | `systemd-cryptenroll`                                 |
-| Locale, keyboard, time zone, hostname | `systemd-firstboot` or `firstboot.*` credentials      |
-| First owner                           | `homectl create` or a `home.create.<user>` credential |
-| Wi-Fi profile                         | A NetworkManager keyfile                              |
-| Update source                         | `bootc install --target-imgref`                       |
+| Path                      | Purpose                                                             |
+| ------------------------- | ------------------------------------------------------------------- |
+| `Containerfile`           | The unsealed system.                                                |
+| `Containerfile.installer` | The unsealed installer medium: the system, the installer, the payload. |
+| `Containerfile.seal`      | Adds the signed UKI to an unsealed image.                           |
+| `rootfs/`                 | Files copied verbatim into the image; paths mirror `/`.             |
+| `scripts/`                | Keys, image build, medium, installation in QEMU, publishing, SSH.   |
+| `tests/`                  | Checks: image (`image.sh`), medium (`installer.sh`), installed system (`boot.sh`, `system.sh`), updates (`update.sh`). |
+| `build/`                  | Generated outputs (ignored by Git).                                 |
 
 ## Not yet implemented
 
@@ -222,6 +217,9 @@ systemd credentials:
   does not yet add boot counters to its entries (planned through
   `/etc/kernel/tries`), and Fedora 44's SELinux policy does not yet let
   `systemd-bless-boot` rename entries on the ESP.
+- NvPCR measurements. The same policy does not let `systemd-tpm2-setup` save
+  its anchor credential to the ESP, so that unit fails on the installer
+  medium. The TPM2 unlock policy (PCR 7 and PCR 11) does not use NvPCRs.
 - A minimal signed recovery UKI.
 - The home storage policy: guaranteed minimums, the machine reserve, and
   low-space states. systemd-homed's defaults size homes for now.

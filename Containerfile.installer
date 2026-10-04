@@ -1,0 +1,39 @@
+# check=skip=InvalidDefaultArgInFrom
+# The installer medium: the ShapeBit system plus the installer and the system
+# to install. It is built from the unsealed system and then sealed in the same
+# way (see scripts/image.sh), so its signed UKI also covers the payload.
+# Build contexts: `installer` is the installer source tree; `payload` is the
+# directory with the sealed system archive, image.tar.
+# BASE has no default: the Makefile always passes it.
+ARG BASE
+FROM ${BASE} AS build
+RUN dnf -y install cmake ninja-build gcc-c++ qt6-qtbase-devel qt6-qtdeclarative-devel libxkbcommon-devel
+COPY --from=installer . /src
+RUN cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build /build && DESTDIR=/out cmake --install /build
+
+FROM ${BASE}
+# cage shows the installer full screen; nothing else of a desktop is needed.
+# dnf state in /var and /run is removed, since bootc ignores it on install.
+RUN dnf -y install cage qt6-qtbase-gui qt6-qtdeclarative qt6-qtwayland mesa-dri-drivers \
+      google-noto-sans-fonts google-noto-sans-mono-fonts && \
+    dnf clean all && \
+    rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
+COPY --from=build /out/ /
+# The units are enabled by the preset that the installer ships, which also
+# holds on the first boot, when systemd applies presets again.
+RUN systemctl set-default graphical.target && \
+    systemctl preset installer-backend.service installer.service
+
+# What the installer installs, and where the installed system updates from.
+# The development registry serves plain HTTP, so the installed system marks it
+# insecure (containers-registries.conf.d(5)).
+COPY --from=payload image.tar /usr/share/installer/image.tar
+ARG UPDATE_REF
+RUN test -n "$UPDATE_REF" && \
+    printf '[Payload]\nSource=oci-archive:/usr/share/installer/image.tar\nUpdateRef=%s\n' "$UPDATE_REF" \
+      >/usr/share/installer/installer.conf && \
+    mkdir -p /usr/share/installer/target-etc/containers/registries.conf.d && \
+    printf '[[registry]]\nlocation = "%s"\ninsecure = true\n' "${UPDATE_REF%%/*}" \
+      >/usr/share/installer/target-etc/containers/registries.conf.d/50-update-registry.conf
+RUN bootc container lint

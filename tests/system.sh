@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Checks run inside the booted system (`make test`); uses only tools the image ships.
-# OWNER_NAME is the first owner that the VM passes as a credential.
+# OWNER_NAME is the first owner that the installer created; LOCALE,
+# KEYBOARD_LAYOUT, and TIME_ZONE are the settings it was given.
 set -uo pipefail
-: "${OWNER_NAME:?}"
+: "${OWNER_NAME:?}" "${LOCALE:?}" "${KEYBOARD_LAYOUT:?}" "${TIME_ZONE:?}"
 
 failed=0
 check() {
@@ -37,7 +38,7 @@ check "TPM2 key slot is bound to PCR 7 and signed PCR 11" tpm2_policy
 has_recovery_key() { luks_dump | jq -e '[.tokens[] | select(.type == "systemd-recovery")] | length == 1' >/dev/null; }
 check "recovery key is enrolled" has_recovery_key
 only_tpm2_and_recovery() { luks_dump | jq -e '.keyslots | length == 2' >/dev/null; }
-check "clear key is gone; no other key slots" only_tpm2_and_recovery
+check "installation key is gone; no other key slots" only_tpm2_and_recovery
 unlocked_by_tpm2() {
   local log
   log=$(journalctl -b -o cat -u systemd-cryptsetup@root.service)
@@ -46,7 +47,6 @@ unlocked_by_tpm2() {
 check "unlocked by the TPM" unlocked_by_tpm2
 machine_id_saved() { test -s /etc/machine-id && ! grep -q uninitialized /etc/machine-id && ! findmnt /etc/machine-id >/dev/null; }
 check "machine ID is saved, not temporary" machine_id_saved
-check "TPM2 enrollment runs only on the first boot" test "$(systemctl show -P ConditionResult tpm2-firstboot.service)" = no
 disk=/dev/$(lsblk -ndo PKNAME /dev/disk/by-partlabel/shapebit)
 root_partition_fills_disk() {
   local free
@@ -93,5 +93,12 @@ home_mounted() { [[ $(findmnt -no FSTYPE,SOURCE "/home/$user") =~ ^btrfs\ /dev/m
 check "active home is Btrfs on dm-crypt" home_mounted
 homectl deactivate "$user"
 check "homed removes the home" homectl remove "$user"
+
+# localectl and timedatectl report what systemd read from /etc.
+locale_is_set() { localectl status | grep -q "System Locale: LANG=$LOCALE\$"; }
+check "locale is the one given to the installer" locale_is_set
+keymap_is_set() { localectl status | grep -Eq "VC Keymap: +$KEYBOARD_LAYOUT\$" && localectl status | grep -Eq "X11 Layout: +$KEYBOARD_LAYOUT\$"; }
+check "keyboard layout is the one given to the installer" keymap_is_set
+check "time zone is the one given to the installer" test "$(timedatectl show --property=Timezone --value)" = "$TIME_ZONE"
 
 exit "$failed"
