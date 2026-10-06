@@ -25,6 +25,7 @@ check "medium is sealed by a composefs digest" grep -Eq '(^| )composefs=[0-9a-f]
 check "payload is on the medium" test -s /usr/share/installer/image.tar
 check "installer backend is running" systemctl -q is-active installer-backend.service
 check "installer UI is running" systemctl -q is-active installer.service
+check "installer has the screen: no login screen" test "$(systemctl is-enabled sddm.service)" = masked
 ui_is_unprivileged() { test "$(ps -o user= -C installer | sort -u)" = installer; }
 check "installer UI runs as an unprivileged user" ui_is_unprivileged
 capable() { installerctl capabilities | grep -q '"tpm2":true.*"uefi":true'; }

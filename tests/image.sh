@@ -12,7 +12,14 @@ check() {
 . /etc/os-release
 check "os-release identifies ShapeBit OS" test "$ID" = shapebit
 check "os-release carries the image version" test -n "${IMAGE_VERSION:-}"
-check "default target is multi-user" test "$(systemctl get-default)" = multi-user.target
+check "default target is graphical" test "$(systemctl get-default)" = graphical.target
+check "login screen is enabled" systemctl -q is-enabled sddm.service
+login_setting() { grep -qx "$1" /usr/lib/sddm/sddm.conf.d/10-login.conf; }
+check "login screen uses the login theme" login_setting Current=login
+check "login theme is present" test -s /usr/share/sddm/themes/login/Main.qml
+check "login screen lists systemd-homed users" login_setting MaximumUid=60513
+has_login_font() { fc-list : family | grep -qx 'Instrument Sans'; }
+check "login theme's font is installed" has_login_font
 check "sshd is enabled" systemctl -q is-enabled sshd.service
 check "NetworkManager is enabled" systemctl -q is-enabled NetworkManager.service
 check "systemd-homed is enabled" systemctl -q is-enabled systemd-homed.service

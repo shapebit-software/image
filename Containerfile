@@ -1,4 +1,4 @@
-# ShapeBit OS: console-only bootc image, booted by systemd-boot from a signed UKI.
+# ShapeBit OS: bootc image, booted by systemd-boot from a signed UKI.
 # This is the unsealed system; Containerfile.seal adds the UKI (see
 # scripts/image.sh), and Containerfile.installer builds the installer medium
 # from it. Signing needs the Secure Boot keys as build secrets PK,
@@ -17,11 +17,17 @@ COPY rootfs/ /
 # The base image ships only GRUB; bootc installs systemd-boot from this package.
 # The base image has only the C locale; the langpacks add the locales that the
 # installer offers.
-# dnf state in /var and /run is removed, since bootc ignores it on install.
-RUN dnf -y install systemd-boot-unsigned glibc-all-langpacks && dnf clean all && \
-    rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
+# SDDM is the login screen; its greeter runs in Weston (sddm-wayland-generic)
+# and draws with Mesa. Fedora's presets enable sddm.service.
+# dnf state in /var and /run is removed, since bootc ignores it on install;
+# so are SDDM's runtime directory, which tmpfiles.d creates on each boot, and
+# libX11's empty cache.
+RUN dnf -y install systemd-boot-unsigned glibc-all-langpacks \
+      sddm sddm-wayland-generic mesa-dri-drivers && dnf clean all && \
+    rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf \
+      /run/sddm /var/cache/libX11
 
-RUN systemctl set-default multi-user.target
+RUN systemctl set-default graphical.target
 
 # Logins for systemd-homed users need pam_systemd_home. authselect's checksum
 # in /var is dropped, as in the base image; the configuration lives in /etc.

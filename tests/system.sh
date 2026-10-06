@@ -77,6 +77,24 @@ check "first owner exists and administers the machine" owner_is_admin
 owner_home_is_luks() { homectl inspect -j "$OWNER_NAME" | jq -e '[.binding[].storage] == ["luks"]' >/dev/null; }
 check "first owner has a LUKS2 home" owner_home_is_luks
 
+check "login screen is running" systemctl -q is-active sddm.service
+# SDDM starts its greeter after the system reports that it is up.
+greeter_runs() {
+  for _ in {1..30}; do
+    pgrep -u sddm -f sddm-greeter >/dev/null && return
+    sleep 1
+  done
+  return 1
+}
+check "login screen shows its greeter" greeter_runs
+# SDDM lists the users that enumerate through NSS, within its UID range.
+owner_is_listed() {
+  local uid
+  uid=$(getent passwd | awk -F: -v user="$OWNER_NAME" '$1 == user { print $3 }')
+  [[ -n $uid ]] && ((uid >= 1000 && uid <= 60513))
+}
+check "login screen lists the first owner" owner_is_listed
+
 # A throwaway systemd-homed user shows that homes are encrypted images in @people.
 # It is small, since the test is about where homes live, not how big they get.
 user=shapebit-test

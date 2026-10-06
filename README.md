@@ -3,7 +3,8 @@
 The bootable ShapeBit OS image: a [bootc](https://bootc-dev.github.io/bootc/)
 container built on Fedora bootc 44, and the installer medium that installs it
 to a disk that follows the [Base System](https://shapebit.software/docs/)
-architecture. The system is currently console-only.
+architecture. The system starts to a login screen; it has no desktop session
+yet.
 
 ## Requirements
 
@@ -45,7 +46,8 @@ signs with development keys that [scripts/keys.sh](scripts/keys.sh) generates
 in `build/keys/`: Secure Boot PK, KEK, and db, and a TPM2 PCR policy key.
 
 1. [Containerfile](Containerfile) builds the system: systemd-boot signed with
-   db, the Secure Boot public keys, and systemd-homed login support.
+   db, the Secure Boot public keys, systemd-homed login support, and the
+   login screen.
 2. [Containerfile.seal](Containerfile.seal) adds a UKI signed with db. Its
    command line pins the system's composefs digest, and it carries signed
    PCR 11 values for TPM2 unlock. The digest is computed from the built
@@ -140,6 +142,28 @@ is a LUKS2-encrypted image, `/home/<user>.home` in `@people`, with Btrfs
 inside, unlocked by its owner's password at login. The installer creates the
 first owner, an administrator (`wheel`), directly on the installed disk.
 
+### Login screen
+
+[SDDM](https://github.com/sddm/sddm) shows the login screen on the first
+virtual terminal; its greeter runs in Weston. The theme, in
+[rootfs/usr/share/sddm/themes/login](rootfs/usr/share/sddm/themes/login), draws
+the screen: the date and time, the accessibility and power menus, and the
+person who signs in with their password. It lists systemd-homed users, uses
+the Instrument Sans font (SIL Open Font License, in
+[rootfs/usr/share/fonts/instrument-sans](rootfs/usr/share/fonts/instrument-sans),
+since Fedora has no package of it), and draws its backdrop itself.
+
+The image has no desktop session yet, so the login screen cannot start one
+and says so. Consoles are on the other virtual terminals (Ctrl+Alt+F3). The
+installer medium masks `sddm.service`, because the installer takes the screen
+there.
+
+To change the theme, run it in a window on a machine with SDDM:
+
+```bash
+sddm-greeter-qt6 --test-mode --theme rootfs/usr/share/sddm/themes/login
+```
+
 ## Real hardware
 
 The installer medium can install on an x86-64 UEFI machine with a TPM 2.0.
@@ -174,8 +198,9 @@ development key.
    network step offers nothing yet; skip it. Write down the recovery key that it shows: it is the only way
    in if the TPM refuses.
 5. Remove the medium and restart. The disk unlocks with the TPM.
-6. Log in, connect to the network (`nmcli device wifi connect NAME --ask` for
-   Wi-Fi), and run the system checks:
+6. Switch to a console (Ctrl+Alt+F3), log in, connect to the network
+   (`nmcli device wifi connect NAME --ask` for Wi-Fi), and run the system
+   checks:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/shapebit-software/image/main/tests/system.sh |
@@ -212,6 +237,7 @@ installer the first owner, `OWNER_NAME` (default `dev`) with the password in
 
 ## Not yet implemented
 
+- A desktop session for the login screen to start.
 - Trial boots with automatic rollback (systemd's Automatic Boot Assessment)
   and the boot health check. They wait on upstream: bootc's composefs backend
   does not yet add boot counters to its entries (planned through

@@ -21,9 +21,12 @@ RUN dnf -y install cage qt6-qtbase-gui qt6-qtdeclarative qt6-qtwayland mesa-dri-
     rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
 COPY --from=build /out/ /
 # The units are enabled by the preset that the installer ships, which also
-# holds on the first boot, when systemd applies presets again.
+# holds on the first boot, when systemd applies presets again. The installer
+# takes the screen, so the system's login screen is masked; presets skip
+# masked units.
 RUN systemctl set-default graphical.target && \
-    systemctl preset installer-backend.service installer.service
+    systemctl preset installer-backend.service installer.service && \
+    systemctl mask sddm.service
 
 # What the installer installs, and where the installed system updates from.
 # The development registry serves plain HTTP, so the installed system marks it
