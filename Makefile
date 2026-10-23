@@ -12,6 +12,8 @@ DISK_SIZE      ?= 20G
 # The installer medium: its image, its source tree, and its raw disk.
 INSTALLER_IMAGE ?= localhost/shapebit-os-installer:dev
 INSTALLER_SRC   ?= ../installer
+# The desktop's source tree, which the image installs.
+DESKTOP_SRC     ?= ../desktop
 MEDIUM          ?= $(BUILD)/installer.raw
 MEDIUM_SIZE     ?= 10G
 SSH_PORT       ?= 2222
@@ -45,7 +47,8 @@ KEYS := $(foreach name,PK KEK db,$(KEYS_DIR)/$(name).key $(KEYS_DIR)/$(name).crt
 
 image: $(KEYS) ## Build the container image with its signed UKI
 	scripts/image.sh Containerfile $(IMAGE) $(BUILD)/image.tar \
-	  --build-arg FEDORA_VERSION=$(FEDORA_VERSION) --build-arg IMAGE_VERSION=$(IMAGE_VERSION)
+	  --build-arg FEDORA_VERSION=$(FEDORA_VERSION) --build-arg IMAGE_VERSION=$(IMAGE_VERSION) \
+	  --build-context desktop=$(DESKTOP_SRC)
 
 check: image ## Run checks inside the container image
 	$(ENGINE) run --rm -i --network none $(IMAGE) bash -s < tests/image.sh

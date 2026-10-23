@@ -27,6 +27,26 @@ RUN dnf -y install systemd-boot-unsigned glibc-all-langpacks \
     rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf \
       /run/sddm /var/cache/libX11
 
+# The desktop: Hyprland and Quickshell, and what the shell runs (grim, slurp,
+# and wf-recorder capture the screen; xdg-user-dirs finds Pictures and Videos)
+# and draws with (JetBrains Mono). Fedora has no Hyprland, so it comes from a
+# third-party COPR for now; the repository is used only for this build and is
+# not left in the image.
+RUN <<'EOF'
+set -euo pipefail
+cat >/etc/yum.repos.d/hyprland.repo <<'REPO'
+[hyprland]
+name=Hyprland (COPR sdegler/hyprland)
+baseurl=https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/fedora-$releasever-$basearch/
+gpgcheck=1
+gpgkey=https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
+REPO
+dnf -y install hyprland quickshell grim slurp wf-recorder xdg-user-dirs jetbrains-mono-fonts
+dnf clean all
+rm /etc/yum.repos.d/hyprland.repo
+rm -rf /var/log/dnf5.log /var/lib/dnf /var/cache/libdnf5 /var/cache/ldconfig /run/dnf
+EOF
+
 RUN systemctl set-default graphical.target
 
 # Logins for systemd-homed users need pam_systemd_home. authselect's checksum
@@ -69,7 +89,13 @@ sign-efi-sig-list -g "$OWNER_GUID" -k /run/secrets/KEK.key -c /run/secrets/KEK.c
 rm ./*.esl
 EOF
 
+# The desktop's files (build context `desktop`), installed by its Makefile.
+FROM tools AS desktop-files
+RUN dnf -y install make
+RUN --mount=type=bind,from=desktop,target=/src make -C /src install DESTDIR=/out
+
 FROM system
+COPY --from=desktop-files /out/ /
 COPY --from=bootloader /out/ /usr/lib/systemd/boot/efi/
 COPY --from=keys /out/ /usr/lib/bootc/install/secureboot-keys/auto/
 # Identifies this build; last, so a new version rebuilds only this layer.

@@ -20,6 +20,24 @@ check "login theme is present" test -s /usr/share/sddm/themes/login/Main.qml
 check "login screen lists systemd-homed users" login_setting MaximumUid=60513
 has_login_font() { fc-list : family | grep -qx 'Instrument Sans'; }
 check "login theme's font is installed" has_login_font
+check "desktop session is installed" grep -qx 'TryExec=start-hyprland' /usr/share/wayland-sessions/desktop.desktop
+has_command() { command -v "$1" >/dev/null; }
+check "desktop session's compositor is installed" has_command start-hyprland
+check "desktop shell is installed" test -s /usr/share/desktop/shell/shell.qml
+check "desktop shell's runtime is installed" has_command qs
+# Hyprland refuses to run as root and needs a runtime directory even to
+# verify its configuration.
+verify_compositor_config() {
+  setpriv --reuid=nobody --regid=nobody --clear-groups sh -c \
+    'XDG_RUNTIME_DIR=$(mktemp -d) exec Hyprland --verify-config --config /usr/share/desktop/compositor/hyprland.lua' >/dev/null
+}
+check "desktop compositor configuration is valid" verify_compositor_config
+has_desktop_tools() { for tool in grim slurp wf-recorder xdg-user-dir; do has_command "$tool" || return 1; done; }
+check "desktop's capture tools are installed" has_desktop_tools
+has_mono_font() { fc-list : family | grep -qx 'JetBrains Mono'; }
+check "desktop's monospace font is installed" has_mono_font
+no_copr_repo() { ! grep -rqs copr /etc/yum.repos.d; }
+check "no third-party repository is left configured" no_copr_repo
 check "sshd is enabled" systemctl -q is-enabled sshd.service
 check "NetworkManager is enabled" systemctl -q is-enabled NetworkManager.service
 check "systemd-homed is enabled" systemctl -q is-enabled systemd-homed.service

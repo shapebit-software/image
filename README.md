@@ -3,8 +3,8 @@
 The bootable ShapeBit OS image: a [bootc](https://bootc-dev.github.io/bootc/)
 container built on Fedora bootc 44, and the installer medium that installs it
 to a disk that follows the [Base System](https://shapebit.software/docs/)
-architecture. The system starts to a login screen; it has no desktop session
-yet.
+architecture. The system starts to a login screen, which opens the
+[desktop](https://github.com/shapebit-software/desktop).
 
 ## Requirements
 
@@ -46,8 +46,12 @@ signs with development keys that [scripts/keys.sh](scripts/keys.sh) generates
 in `build/keys/`: Secure Boot PK, KEK, and db, and a TPM2 PCR policy key.
 
 1. [Containerfile](Containerfile) builds the system: systemd-boot signed with
-   db, the Secure Boot public keys, systemd-homed login support, and the
-   login screen.
+   db, the Secure Boot public keys, systemd-homed login support, the
+   login screen, and the desktop. The desktop's files come from its source
+   tree (`DESKTOP_SRC`, by default `../desktop`), installed by its Makefile.
+   Fedora has no Hyprland, so the build installs it from the third-party
+   [sdegler/hyprland](https://copr.fedorainfracloud.org/coprs/sdegler/hyprland/)
+   COPR for now; the repository is not left in the image.
 2. [Containerfile.seal](Containerfile.seal) adds a UKI signed with db. Its
    command line pins the system's composefs digest, and it carries signed
    PCR 11 values for TPM2 unlock. The digest is computed from the built
@@ -141,6 +145,10 @@ Users are [systemd-homed](https://systemd.io/HOME_DIRECTORY/) homes. Each home
 is a LUKS2-encrypted image, `/home/<user>.home` in `@people`, with Btrfs
 inside, unlocked by its owner's password at login. The installer creates the
 first owner, an administrator (`wheel`), directly on the installed disk.
+systemd-homework leaves that Btrfs without SELinux labels, which keeps the
+login screen out of the home; homed mounts it with `defcontext=` so it reads
+as a home directory
+([systemd-homed.service.d](rootfs/usr/lib/systemd/system/systemd-homed.service.d)).
 
 ### Login screen
 
@@ -153,8 +161,8 @@ the Instrument Sans font (SIL Open Font License, in
 [rootfs/usr/share/fonts/instrument-sans](rootfs/usr/share/fonts/instrument-sans),
 since Fedora has no package of it), and draws its backdrop itself.
 
-The image has no desktop session yet, so the login screen cannot start one
-and says so. Consoles are on the other virtual terminals (Ctrl+Alt+F3). The
+Signing in starts the desktop session (Hyprland with the ShapeBit shell);
+without a session the login screen says so. Consoles are on the other virtual terminals (Ctrl+Alt+F3). The
 installer medium masks `sddm.service`, because the installer takes the screen
 there.
 
@@ -237,7 +245,8 @@ installer the first owner, `OWNER_NAME` (default `dev`) with the password in
 
 ## Not yet implemented
 
-- A desktop session for the login screen to start.
+- The desktop's session services: notifications, administrator prompts,
+  the secret service, idle and sleep handling, laptop power and brightness.
 - Trial boots with automatic rollback (systemd's Automatic Boot Assessment)
   and the boot health check. They wait on upstream: bootc's composefs backend
   does not yet add boot counters to its entries (planned through

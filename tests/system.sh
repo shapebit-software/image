@@ -109,7 +109,35 @@ check "home user resolves through NSS" home_resolves
 check "home activates with its password" env PASSWORD="$password" homectl activate "$user"
 home_mounted() { [[ $(findmnt -no FSTYPE,SOURCE "/home/$user") =~ ^btrfs\ /dev/mapper/home- ]]; }
 check "active home is Btrfs on dm-crypt" home_mounted
-homectl deactivate "$user"
+# The login screen starts the desktop in a home: signed in automatically, since
+# the home is already unlocked. The autologin setting lasts only for this check.
+autologin=/etc/sddm.conf.d/zz-desktop-check.conf
+desktop_starts() {
+  mkdir -p "${autologin%/*}"
+  printf '[Autologin]\nUser=%s\nSession=desktop.desktop\n' "$user" >"$autologin"
+  systemctl restart sddm.service
+  for _ in {1..60}; do
+    pgrep -u "$user" -x Hyprland >/dev/null && pgrep -u "$user" -x qs >/dev/null && return
+    sleep 1
+  done
+  return 1
+}
+check "login screen starts the desktop in a home" desktop_starts
+rm "$autologin"
+loginctl terminate-user "$user"
+# homed is busy with the home while the session ends; it may also deactivate
+# the home itself then.
+home_state() { homectl inspect "$user" | awk '$1 == "State:" { print $2 }'; }
+for _ in {1..30}; do
+  case $(home_state) in
+    inactive) break ;;
+    active) homectl deactivate "$user" 2>/dev/null && break ;;
+  esac
+  sleep 1
+done
+# Restarting the login screen again may exceed its start limit.
+systemctl reset-failed sddm.service
+systemctl restart sddm.service
 check "homed removes the home" homectl remove "$user"
 
 # localectl and timedatectl report what systemd read from /etc.
