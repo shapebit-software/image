@@ -39,6 +39,28 @@ check "desktop's capture tools are installed" has_desktop_tools
 check "desktop's idle handler is installed" has_command hypridle
 check "desktop's portal is Hyprland's" grep -qx 'default=hyprland' /usr/share/xdg-desktop-portal/shapebit-portals.conf
 check "Hyprland's portal is installed" test -s /usr/share/xdg-desktop-portal/portals/hyprland.portal
+check "desktop's settings portal is GTK's" grep -qx 'org.freedesktop.impl.portal.Settings=gtk' /usr/share/xdg-desktop-portal/shapebit-portals.conf
+check "GTK's portal is installed" test -s /usr/share/xdg-desktop-portal/portals/gtk.portal
+check "desktop's file chooser is the shell's" grep -qx 'org.freedesktop.impl.portal.FileChooser=shell' /usr/share/xdg-desktop-portal/shapebit-portals.conf
+check "desktop's screenshots are the shell's" grep -qx 'org.freedesktop.impl.portal.Screenshot=shell' /usr/share/xdg-desktop-portal/shapebit-portals.conf
+check "shell's portal is installed" test -s /usr/share/xdg-desktop-portal/portals/shell.portal
+is_python() { test -x "$1" && python3 -c 'import ast, sys; ast.parse(open(sys.argv[1]).read())' "$1"; }
+shell_portal_starts() {
+  grep -qx 'Exec=/usr/libexec/desktop/portal' /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.shell.service &&
+    is_python /usr/libexec/desktop/portal
+}
+check "D-Bus starts the shell's portal" shell_portal_starts
+# Hyprland's portal reads its configuration from XDG_CONFIG_HOME/hypr only.
+shell_share_picker() {
+  is_python /usr/libexec/desktop/share-picker &&
+    grep -q 'custom_picker_binary = /usr/libexec/desktop/share-picker' /usr/share/desktop/portal/hypr/xdph.conf &&
+    systemctl --user --global cat xdg-desktop-portal-hyprland.service 2>/dev/null |
+    grep -qx 'Environment=XDG_CONFIG_HOME=/usr/share/desktop/portal'
+}
+check "sharing the screen asks through the shell" shell_share_picker
+check "applications outside Flatpak use the portals" grep -qx 'GTK_USE_PORTAL=1' /usr/lib/environment.d/60-portals.conf
+no_window_buttons() { [[ $(GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.wm.preferences button-layout) == "':'" ]]; }
+check "applications show no window buttons" no_window_buttons
 check "desktop's brightness control is installed" has_command brightnessctl
 check "desktop's clipboard keeper is installed" has_command clipman
 check "power profiles are enabled" systemctl -q is-enabled power-profiles-daemon.service

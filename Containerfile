@@ -104,6 +104,9 @@ RUN --mount=type=bind,from=desktop,target=/src make -C /src install DESTDIR=/out
 
 FROM system
 COPY --from=desktop-files /out/ /
+# The desktop's settings defaults (window-buttons.gschema.override) apply
+# once the schemas are compiled again.
+RUN glib-compile-schemas /usr/share/glib-2.0/schemas
 COPY --from=bootloader /out/ /usr/lib/systemd/boot/efi/
 COPY --from=keys /out/ /usr/lib/bootc/install/secureboot-keys/auto/
 # Identifies this build; last, so a new version rebuilds only this layer.

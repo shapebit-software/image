@@ -162,6 +162,26 @@ screencast() {
     org.freedesktop.portal.ScreenCast version >/dev/null 2>&1
 }
 check "desktop session shares the screen through the portal" screencast
+# Applications in Flatpak read the window buttons through the portal.
+portal_window_buttons() {
+  busctl --user -M "$user@" call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop \
+    org.freedesktop.portal.Settings ReadOne ss org.gnome.desktop.wm.preferences button-layout 2>/dev/null |
+    grep -qx 'v s ":"'
+}
+check "desktop session's applications show no window buttons" portal_window_buttons
+# Opening and saving files, and screenshots: the portal offers them, D-Bus
+# starts the shell's backend in the session, and the shell listens for its
+# questions.
+shell_portal() {
+  local interface
+  for interface in FileChooser Screenshot; do
+    busctl --user -M "$user@" get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop \
+      "org.freedesktop.portal.$interface" version >/dev/null 2>&1 || return 1
+  done
+  answers org.freedesktop.impl.portal.desktop.shell /org/freedesktop/portal/desktop &&
+    compgen -G "/run/user/$uid/desktop/portal-wayland-*.sock" >/dev/null
+}
+check "desktop session opens files and takes screenshots through the shell" shell_portal
 # An action that needs an administrator makes the shell ask for the password
 # (its "authorization" surface); the question is left unanswered.
 asks_for_admin() {
