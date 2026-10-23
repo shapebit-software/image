@@ -20,7 +20,9 @@ check "login theme is present" test -s /usr/share/sddm/themes/login/Main.qml
 check "login screen lists systemd-homed users" login_setting MaximumUid=60513
 has_login_font() { fc-list : family | grep -qx 'Instrument Sans'; }
 check "login theme's font is installed" has_login_font
-check "desktop session is installed" grep -qx 'TryExec=start-hyprland' /usr/share/wayland-sessions/desktop.desktop
+check "desktop session is installed" grep -qx 'TryExec=uwsm' /usr/share/wayland-sessions/desktop.desktop
+only_desktop_session() { [[ $(ls /usr/share/wayland-sessions) == desktop.desktop ]] && ! compgen -G '/usr/share/xsessions/*' >/dev/null; }
+check "login screen offers only the desktop session" only_desktop_session
 has_command() { command -v "$1" >/dev/null; }
 check "desktop session's compositor is installed" has_command start-hyprland
 check "desktop shell is installed" test -s /usr/share/desktop/shell/shell.qml

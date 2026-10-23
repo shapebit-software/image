@@ -111,10 +111,15 @@ home_mounted() { [[ $(findmnt -no FSTYPE,SOURCE "/home/$user") =~ ^btrfs\ /dev/m
 check "active home is Btrfs on dm-crypt" home_mounted
 # The login screen starts the desktop in a home: signed in automatically, since
 # the home is already unlocked. The autologin setting lasts only for this check.
+# An application that starts with every session, for the autostart check.
 autologin=/etc/sddm.conf.d/zz-desktop-check.conf
+autostart=/etc/xdg/autostart/zz-desktop-check.desktop
+autostarted=/tmp/desktop-autostart-check
+rm -f "$autostarted"
 desktop_starts() {
   mkdir -p "${autologin%/*}"
   printf '[Autologin]\nUser=%s\nSession=desktop.desktop\n' "$user" >"$autologin"
+  printf '[Desktop Entry]\nType=Application\nName=Check\nExec=touch %s\n' "$autostarted" >"$autostart"
   systemctl restart sddm.service
   for _ in {1..60}; do
     pgrep -u "$user" -x Hyprland >/dev/null && pgrep -u "$user" -x qs >/dev/null && return
@@ -132,7 +137,35 @@ sleep_waits_for_lock() {
   return 1
 }
 check "desktop locks the screen before sleep" sleep_waits_for_lock
-rm "$autologin"
+uid=$(id -u "$user")
+graphical_session() {
+  for _ in {1..20}; do
+    [[ $(systemctl --user -M "$user@" is-active graphical-session.target) == active ]] && return
+    sleep 1
+  done
+  return 1
+}
+check "desktop session reaches graphical-session.target" graphical_session
+autostart_ran() {
+  for _ in {1..20}; do
+    [[ $(stat -c %U "$autostarted" 2>/dev/null) == "$user" ]] && return
+    sleep 1
+  done
+  return 1
+}
+check "desktop session starts XDG autostart applications" autostart_ran
+# Log out as the account panel does: Hyprland's exit.
+logs_out() {
+  setpriv --reuid="$user" --regid="$user" --init-groups env XDG_RUNTIME_DIR="/run/user/$uid" \
+    hyprctl --instance 0 dispatch 'hl.dsp.exit()' >/dev/null
+  for _ in {1..30}; do
+    loginctl list-sessions --no-legend | awk -v user="$user" '$3 == user && $6 != "manager" { found = 1 } END { exit !found }' || return 0
+    sleep 1
+  done
+  return 1
+}
+check "logging out ends the desktop session" logs_out
+rm -f "$autologin" "$autostart" "$autostarted"
 loginctl terminate-user "$user"
 # homed is busy with the home while the session ends; it may also deactivate
 # the home itself then.
