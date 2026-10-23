@@ -34,6 +34,7 @@ verify_compositor_config() {
 check "desktop compositor configuration is valid" verify_compositor_config
 has_desktop_tools() { for tool in grim slurp wf-recorder xdg-user-dir; do has_command "$tool" || return 1; done; }
 check "desktop's capture tools are installed" has_desktop_tools
+check "desktop's idle handler is installed" has_command hypridle
 has_mono_font() { fc-list : family | grep -qx 'JetBrains Mono'; }
 check "desktop's monospace font is installed" has_mono_font
 no_copr_repo() { ! grep -rqs copr /etc/yum.repos.d; }

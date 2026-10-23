@@ -123,6 +123,15 @@ desktop_starts() {
   return 1
 }
 check "login screen starts the desktop in a home" desktop_starts
+# The desktop's hypridle delays sleep until the screen is locked.
+sleep_waits_for_lock() {
+  for _ in {1..10}; do
+    systemd-inhibit --list --no-legend | grep -Eq "^hypridle .* $user .* sleep .* delay" && return
+    sleep 1
+  done
+  return 1
+}
+check "desktop locks the screen before sleep" sleep_waits_for_lock
 rm "$autologin"
 loginctl terminate-user "$user"
 # homed is busy with the home while the session ends; it may also deactivate
