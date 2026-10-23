@@ -171,7 +171,8 @@ notification_server() {
     org.freedesktop.Notifications GetServerInformation 2>/dev/null | grep -q '"quickshell"'
 }
 check "desktop session shows notifications" notification_server
-check "desktop session keeps copied text" pgrep -u "$user" -f "clipman store"
+keeps_copies() { pgrep -u "$user" -f "clipman store" >/dev/null; }
+check "desktop session keeps copied text" keeps_copies
 # Log out as the account panel does: Hyprland's exit.
 logs_out() {
   setpriv --reuid="$user" --regid="$user" --init-groups env XDG_RUNTIME_DIR="/run/user/$uid" \
