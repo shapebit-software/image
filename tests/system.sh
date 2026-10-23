@@ -162,10 +162,24 @@ screencast() {
     org.freedesktop.portal.ScreenCast version >/dev/null 2>&1
 }
 check "desktop session shares the screen through the portal" screencast
-# polkitd logs the agents that register; the shell's asks for administrators'
-# passwords in the session.
-polkit_agent() { journalctl -b -u polkit.service --no-pager | grep -q "Registered Authentication Agent.*/org/quickshell/PolkitAgent"; }
-check "desktop session answers for administrator rights" polkit_agent
+# An action that needs an administrator makes the shell ask for the password
+# (its "authorization" surface); the question is left unanswered.
+asks_for_admin() {
+  local asked=1
+  setpriv --reuid="$user" --regid="$user" --init-groups env XDG_RUNTIME_DIR="/run/user/$uid" \
+    hyprctl --instance 0 dispatch 'hl.dsp.exec_cmd("pkexec true")' >/dev/null
+  for _ in {1..15}; do
+    if setpriv --reuid="$user" --regid="$user" --init-groups env XDG_RUNTIME_DIR="/run/user/$uid" \
+      hyprctl --instance 0 layers | grep -q 'namespace: authorization'; then
+      asked=0
+      break
+    fi
+    sleep 1
+  done
+  pkill -u "$user" -x pkexec
+  return "$asked"
+}
+check "desktop session asks for an administrator's password" asks_for_admin
 notification_server() {
   busctl --user -M "$user@" call org.freedesktop.Notifications /org/freedesktop/Notifications \
     org.freedesktop.Notifications GetServerInformation 2>/dev/null | grep -q '"quickshell"'
