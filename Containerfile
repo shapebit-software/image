@@ -30,10 +30,14 @@ RUN dnf -y install systemd-boot-unsigned glibc-all-langpacks \
 # The desktop: Hyprland and Quickshell, UWSM, which runs the session, and what
 # the shell runs (hypridle handles idle time and sleep; grim, slurp, and
 # wf-recorder capture the screen; xdg-user-dirs finds Pictures and Videos) and
-# draws with (JetBrains Mono). Fedora has no Hyprland, so it comes from a
-# third-party COPR for now; the repository is used only for this build and is
-# not left in the image. Hyprland's own session entries are removed, so the
-# login screen offers only the desktop's.
+# draws with (JetBrains Mono). clipman keeps copied text after the application
+# it came from closes. brightnessctl sets the display's brightness and
+# power-profiles-daemon the power profile. Hyprland's portal shares the screen
+# with applications; gnome-keyring keeps their secrets, unlocked by the login
+# password (the login screen's PAM configuration already asks for it). Fedora
+# has no Hyprland, so it comes from a third-party COPR for now; the repository
+# is used only for this build and is not left in the image. Hyprland's own
+# session entries are removed, so the login screen offers only the desktop's.
 RUN <<'EOF'
 set -euo pipefail
 cat >/etc/yum.repos.d/hyprland.repo <<'REPO'
@@ -43,7 +47,8 @@ baseurl=https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/fedo
 gpgcheck=1
 gpgkey=https://download.copr.fedorainfracloud.org/results/sdegler/hyprland/pubkey.gpg
 REPO
-dnf -y install hyprland hypridle uwsm quickshell grim slurp wf-recorder xdg-user-dirs jetbrains-mono-fonts
+dnf -y install hyprland hypridle uwsm xdg-desktop-portal-hyprland quickshell grim slurp wf-recorder xdg-user-dirs \
+  jetbrains-mono-fonts clipman brightnessctl power-profiles-daemon gnome-keyring gnome-keyring-pam
 dnf clean all
 rm /etc/yum.repos.d/hyprland.repo
 rm /usr/share/wayland-sessions/hyprland.desktop /usr/share/wayland-sessions/hyprland-uwsm.desktop

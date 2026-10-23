@@ -37,6 +37,13 @@ check "desktop compositor configuration is valid" verify_compositor_config
 has_desktop_tools() { for tool in grim slurp wf-recorder xdg-user-dir; do has_command "$tool" || return 1; done; }
 check "desktop's capture tools are installed" has_desktop_tools
 check "desktop's idle handler is installed" has_command hypridle
+check "desktop's portal is Hyprland's" grep -qx 'default=hyprland' /usr/share/xdg-desktop-portal/shapebit-portals.conf
+check "Hyprland's portal is installed" test -s /usr/share/xdg-desktop-portal/portals/hyprland.portal
+check "desktop's brightness control is installed" has_command brightnessctl
+check "desktop's clipboard keeper is installed" has_command clipman
+check "power profiles are enabled" systemctl -q is-enabled power-profiles-daemon.service
+check "secret service is installed" has_command gnome-keyring-daemon
+check "login unlocks the secret service" test -e /usr/lib64/security/pam_gnome_keyring.so
 has_mono_font() { fc-list : family | grep -qx 'JetBrains Mono'; }
 check "desktop's monospace font is installed" has_mono_font
 no_copr_repo() { ! grep -rqs copr /etc/yum.repos.d; }

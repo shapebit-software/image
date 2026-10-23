@@ -247,8 +247,6 @@ installer the first owner, `OWNER_NAME` (default `dev`) with the password in
 
 ## Not yet implemented
 
-- The desktop's session services: notifications, administrator prompts,
-  the secret service, idle and sleep handling, laptop power and brightness.
 - Trial boots with automatic rollback (systemd's Automatic Boot Assessment)
   and the boot health check. They wait on upstream: bootc's composefs backend
   does not yet add boot counters to its entries (planned through

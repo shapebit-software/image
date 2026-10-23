@@ -154,6 +154,24 @@ autostart_ran() {
   return 1
 }
 check "desktop session starts XDG autostart applications" autostart_ran
+# Services that applications reach on the session bus, started on demand.
+answers() { busctl --user -M "$user@" call "$1" "$2" org.freedesktop.DBus.Peer Ping >/dev/null 2>&1; }
+check "desktop session offers the secret service" answers org.freedesktop.secrets /org/freedesktop/secrets
+screencast() {
+  busctl --user -M "$user@" get-property org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop \
+    org.freedesktop.portal.ScreenCast version >/dev/null 2>&1
+}
+check "desktop session shares the screen through the portal" screencast
+# polkitd logs the agents that register; the shell's asks for administrators'
+# passwords in the session.
+polkit_agent() { journalctl -b -u polkit.service --no-pager | grep -q "Registered Authentication Agent.*/org/quickshell/PolkitAgent"; }
+check "desktop session answers for administrator rights" polkit_agent
+notification_server() {
+  busctl --user -M "$user@" call org.freedesktop.Notifications /org/freedesktop/Notifications \
+    org.freedesktop.Notifications GetServerInformation 2>/dev/null | grep -q '"quickshell"'
+}
+check "desktop session shows notifications" notification_server
+check "desktop session keeps copied text" pgrep -u "$user" -f "clipman store"
 # Log out as the account panel does: Hyprland's exit.
 logs_out() {
   setpriv --reuid="$user" --regid="$user" --init-groups env XDG_RUNTIME_DIR="/run/user/$uid" \
